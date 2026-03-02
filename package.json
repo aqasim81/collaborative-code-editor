@@ -1,0 +1,28 @@
+{
+  "name": "collaborative-code-editor",
+  "private": true,
+  "packageManager": "pnpm@10.7.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "check:ci": "biome check .",
+    "type-check": "turbo type-check",
+    "test": "turbo test -- --passWithNoTests",
+    "test:coverage": "turbo test:coverage -- --passWithNoTests",
+    "validate": "biome check . && turbo type-check && turbo test:coverage -- --passWithNoTests",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.4",
+    "@commitlint/cli": "^20.0.0",
+    "@commitlint/config-conventional": "^20.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.0",
+    "turbo": "^2.4.0",
+    "typescript": "^5.8.0"
+  }
+}
