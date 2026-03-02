@@ -20,12 +20,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "text-summary", "json", "html", "lcov"],
       include: ["lib/**", "components/**", "actions/**"],
-      exclude: [
-        "lib/env.ts",
-        "components/ui/**",
-        "**/*.test.*",
-        "__tests__/**",
-      ],
+      exclude: ["lib/env.ts", "components/ui/**", "**/*.test.*", "__tests__/**"],
       thresholds: {
         lines: 80,
         functions: 80,
