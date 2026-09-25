@@ -30,6 +30,7 @@ Phase 0 complete — Project scaffolded. Next: Phase 1 (Monorepo Scaffolding & Q
 | Linter/Formatter | Biome | 2.x |
 | Testing | Vitest | 4.x |
 | Package manager | pnpm | 10.x |
+| Runtime | Node.js (pinned in `.nvmrc`) | 22.x |
 
 ## Directory Structure
 
