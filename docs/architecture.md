@@ -74,6 +74,24 @@ The collaborative code editor is a three-component system:
 | Doc persistence | LevelDB | Efficient binary storage for Yjs updates, built-in y-leveldb support |
 | Monorepo | Turborepo | Fast builds, task caching, well-supported |
 
+## Infrastructure Requirements by Phase
+
+| Phase | Service | Type | Provisioning | Status |
+|-------|---------|------|-------------|--------|
+| Phase 1 | None | — | — | Ready |
+| Phase 2 | PostgreSQL | External | Cloud provisioning required | Not provisioned |
+| Phase 2 | GitHub OAuth App | External | Manual setup in GitHub Settings | Not created |
+| Phase 3 | None | — | — | Ready |
+| Phase 4 | WebSocket Server (ws) | Self-contained | Runs locally / deploy to cloud | Ready |
+| Phase 4 | LevelDB (y-leveldb) | Embedded | File-based, bundled with npm package | Ready |
+| Phase 5 | Yjs Sync (y-websocket) | Self-contained | Bundled within WS server | Ready |
+| Phase 6 | None | — | — | Ready |
+| Phase 7 | None | — | — | Ready |
+
+**Blockers before Phase 2:**
+- **PostgreSQL** — Provision a database (Vercel Postgres, Supabase, Neon, etc.)
+- **GitHub OAuth App** — Create at GitHub Settings → Developer Settings → OAuth Apps
+
 ## Component Boundaries
 
 - **Web app** owns: authentication, room CRUD, UI rendering, editor component

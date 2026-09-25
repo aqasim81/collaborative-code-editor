@@ -1,0 +1,17 @@
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{js,jsx,ts,tsx,json,css}"
+      run: pnpm exec biome check --write {staged_files}
+      stage_fixed: true
+    gitleaks:
+      run: gitleaks git --staged --no-banner
+pre-push:
+  commands:
+    verify:
+      run: make verify
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}

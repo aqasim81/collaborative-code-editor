@@ -1,0 +1,4 @@
+# One case-insensitive regex per line. Matches block edits to code (docs/, *.md, .claude/ are exempt).
+# Examples:
+# acme[- ]?corp
+# internal\.example\.com

@@ -1,0 +1,4 @@
+# One glob per line (relative to repo root). Edits to matching files are blocked.
+# Examples:
+# src/gen/*
+# migrations/*

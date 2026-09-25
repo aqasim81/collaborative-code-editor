@@ -230,6 +230,12 @@ Based on the chosen stack, set up code quality and coverage tooling:
 
 ---
 
+### Single verify gate (starter kit, ALL stacks)
+Expose one command, `make verify`, that runs format check, lint, type check (if any) and tests with the
+coverage threshold. The pre-push hook and CI must call `make verify` (or the same Makefile targets), never
+their own copies of thresholds or exclusion lists. For Node projects the Makefile wraps the pnpm scripts.
+If the starter kit installed a Makefile/lefthook.yml/ci.yml for this stack, extend those files.
+
 ## Step 5: CI/CD Pipeline (GitHub Actions)
 
 Create `.github/workflows/ci.yml` to enforce quality checks on every push and pull request.
@@ -678,6 +684,17 @@ Review the CLAUDE.md against global standards in `projects/.claude/CLAUDE.md` fo
 
 ---
 
+
+### Starter-kit additions to CLAUDE.md (mandatory)
+- **Commands** list each command with its healthy output in brackets, starting with `make verify`.
+- A **"Verifying your work"** section: run `make verify` before reporting done and paste the output; fix the
+  code, not the test; for UI/document output, render and look at it.
+- An **"## Invariants"** section: the 3–7 rules that must never break in this project (used by the
+  `invariant-auditor` subagent and the Invariants pass in `REVIEW.md`).
+- A **"Things Claude gets wrong"** section, initially empty (two-mistakes rule).
+- A line: `Workflow rules: .claude/rules/ai-native-workflow.md`.
+- Keep CLAUDE.md short; move review rules into `REVIEW.md` ("Project-specific focus").
+
 ## Step 10: Set Up .claude/commands/ and .claude/skills/
 
 Create the project's `.claude/commands/` and `.claude/skills/` directories and copy ALL workspace-level commands and skills into them. This is required because each project is its own git repo — Claude Code cannot traverse past the git boundary to find workspace-level commands.
@@ -755,59 +772,19 @@ Create or update `.claude/settings.json` with the selected MCP configurations:
 }
 ```
 
-### 11b. Hooks Setup
+### 11b. Hooks and 11c. Permissions (starter kit)
 
-Configure hooks in `.claude/settings.json` to automate quality checks:
+If `_starter_kit/install.sh` was run on this directory, `.claude/settings.json` already contains the guard hooks
+(secrets, fix mode, protected paths, forbidden terms, force-push/main, production gate), format-on-edit, the
+opt-in verify-on-stop hook and base permissions. **Do not replace it and do not add hooks that run the test
+suite after every edit** (heavy checks belong in `make verify`, the pre-push hook and CI).
 
-```json
-{
-  "hooks": {
-    "postToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "command": "{stack-specific test command}",
-        "description": "Run tests after file changes to catch regressions"
-      }
-    ]
-  }
-}
-```
+Only add `allow` entries for this project's actual commands (verify, test, lint, type-check, run) and, if the
+project has generated or frozen paths, list them in `.claude/protected-paths.txt`. Put client or employer
+names that must never appear in code into `.claude/forbidden-terms.txt`.
 
-**Stack-specific test commands:**
-- Node.js/TypeScript: `pnpm test -- --passWithNoTests`
-- Python: `make test` or `pytest`
-- Go: `go test ./...`
-
-Note: Use `--passWithNoTests` (or equivalent) during early phases when test files may not exist yet.
-
-### 11c. Permissions Pre-configuration
-
-Add permissions to `.claude/settings.json` that pre-approve safe, routine operations:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash(git add *)",
-      "Bash(git commit *)",
-      "Bash(git status)",
-      "Bash(git diff *)",
-      "Bash(git log *)",
-      "Bash(git branch *)",
-      "Bash({lint-command})",
-      "Bash({test-command})",
-      "Bash({type-check-command})"
-    ],
-    "deny": [
-      "Bash(git push --force *)",
-      "Bash(git reset --hard *)",
-      "Bash(rm -rf *)"
-    ]
-  }
-}
-```
-
-Replace `{lint-command}`, `{test-command}`, and `{type-check-command}` with the actual commands from the CLAUDE.md Commands section.
+If the starter kit was not installed, run `../../_starter_kit/install.sh .` (adjust the path) now instead of
+writing hooks by hand.
 
 Merge all three configs (MCPs, hooks, permissions) into a single `.claude/settings.json` file.
 

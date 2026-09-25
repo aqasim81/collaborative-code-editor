@@ -12,9 +12,9 @@ secrets.*
 # Internal docs
 plans/
 
-# Claude Code config (allow commands to be committed)
-.claude/*
-!.claude/commands/
+# Claude Code: harness is committed; personal settings are not
+.claude/settings.local.json
+.claude/*.bak
 
 # Dependencies
 node_modules/
@@ -49,3 +49,6 @@ Thumbs.db
 
 # Logs
 *.log
+secrets/
+.claude/forbidden-terms.local.txt
+docs/showcase/
