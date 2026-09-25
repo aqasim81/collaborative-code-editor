@@ -50,6 +50,8 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: [verify]
+    # A build must never start a long-running process; fail fast instead of hanging.
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
