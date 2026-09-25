@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current Phase
-Phase 2 complete (#5): Prisma schema with rooms and membership, GitHub sign-in with JWT sessions, protected routes and env validation. Next: Phase 3 (Editor UI, #6).
+Phase 3 complete (#6): members-only room page with a full-height CodeMirror 6 editor, 10-language selector and standard shortcuts. Next: Phase 4 (WebSocket server, #7).
 
 ## Accomplishments
 - [x] Project spec refined and validated
@@ -12,6 +12,7 @@ Phase 2 complete (#5): Prisma schema with rooms and membership, GitHub sign-in w
 - [x] Harness checked: `make verify` fails on a deliberate type error and a failing test (exit 2), and the protected-path hook blocks edits under `apps/web/components/ui/`
 - [x] Roadmap tracked as GitHub issues: phases 2–7 are #5–#10
 - [x] Phase 2: Prisma schema (User, Account, Session, Room, RoomMember) + init migration, Auth.js v5 GitHub OAuth with JWT sessions, protected-route middleware, sign-in page, navbar auth state, Zod env validation at build (#5). Sign-in, navbar avatar/name and sign-out checked end to end against a local GitHub OAuth App
+- [x] Phase 3: CodeMirror 6 editor on `/room/[id]` (members only, 404 otherwise), on-demand grammars for 10 languages, language toolbar, undo/redo/select-all/search, dev `db:seed` (#6). Layout, highlighting switches (JS → Python → JSON), shortcuts, resize and the non-member 404 checked in a browser
 
 ## Blockers
 - `main` has no required status check: GitHub branch protection on a private repo needs a paid plan (#13)
@@ -28,10 +29,11 @@ make verify                       # healthy output ends with VERIFY OK
 docker compose up -d              # Postgres 16 on localhost:5434
 cp .env.example apps/web/.env     # fill in DATABASE_URL, AUTH_SECRET, AUTH_GITHUB_ID/SECRET, NEXT_PUBLIC_* URLs
 pnpm --filter @collab-editor/web db:migrate
+pnpm --filter @collab-editor/web db:seed   # after the first GitHub sign-in: creates /room/seed-room
 pnpm dev
 ```
 
 `apps/web` reads environment variables from `apps/web/.env` (Next.js and Prisma both load it from the app directory).
 
 ## Next Steps
-1. `implement #6` — Phase 3: Editor UI
+1. `implement #7` — Phase 4: WebSocket server

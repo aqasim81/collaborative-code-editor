@@ -6,7 +6,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 2 complete — Prisma schema (rooms + membership), GitHub sign-in with JWT sessions, protected routes, env validation. Local DB: `docker compose up -d` (port 5434). Next: Phase 3 (Editor UI, #6).
+Phase 3 complete — CodeMirror 6 editor on the members-only room page (`/room/[id]`), 10-language selector, dev seed (`pnpm --filter @collab-editor/web db:seed` creates `/room/seed-room`). Local DB: `docker compose up -d` (port 5434). Next: Phase 4 (WebSocket server, #7).
 
 ## Stack
 

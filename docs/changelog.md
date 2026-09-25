@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Phase 3 — Editor UI (#6)
+- `/room/[id]` renders a CodeMirror 6 editor that fills the viewport below the navbar and follows window resizes
+- The page returns 404 unless the session user is a member of the room (`lib/rooms.ts`, Invariant 2)
+- Toolbar language selector for JavaScript, TypeScript, Python, Go, Rust, Java, C, CSS, HTML and JSON; each grammar is loaded on demand and swapped in place through a compartment, keeping text and undo history
+- `basicSetup` keymaps: undo, redo, select all and search; One Dark theme
+- Dev-only `db:seed` script creates an idempotent `seed-room` owned by the first user
+- Added `codemirror` and `@codemirror/language`; the lockfile keeps a single `@codemirror/state`
+
 ### Phase 2 — Database Schema & Authentication (#5)
 - Prisma schema: Auth.js adapter models (User, Account, Session), `Room` and `RoomMember` (OWNER/EDITOR membership, keyed by room and user); `init` migration
 - Local Postgres 16 via `docker-compose.yml` (host port 5434); `db:migrate`, `db:deploy`, `db:studio` scripts; `prisma generate` on install
