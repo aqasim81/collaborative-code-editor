@@ -10,6 +10,7 @@
         "AUTH_GITHUB_ID",
         "AUTH_GITHUB_SECRET",
         "AUTH_URL",
+        "WS_TICKET_SECRET",
         "NEXT_PUBLIC_WS_URL",
         "NEXT_PUBLIC_SITE_URL"
       ]

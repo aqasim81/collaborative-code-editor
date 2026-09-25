@@ -22,6 +22,7 @@ export default defineConfig({
       AUTH_SECRET: "test-secret-test-secret-test-secret-00",
       AUTH_GITHUB_ID: "test-github-id",
       AUTH_GITHUB_SECRET: "test-github-secret",
+      WS_TICKET_SECRET: "test-ticket-secret-test-ticket-secret-00",
       NEXT_PUBLIC_WS_URL: "ws://localhost:8080",
       NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
     },

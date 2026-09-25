@@ -6,6 +6,7 @@ const validEnv = {
   AUTH_SECRET: "a".repeat(32),
   AUTH_GITHUB_ID: "github-id",
   AUTH_GITHUB_SECRET: "github-secret",
+  WS_TICKET_SECRET: "t".repeat(32),
   NEXT_PUBLIC_WS_URL: "ws://localhost:8080",
   NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
 };
@@ -39,6 +40,7 @@ describe("parseEnv", () => {
     "AUTH_SECRET",
     "AUTH_GITHUB_ID",
     "AUTH_GITHUB_SECRET",
+    "WS_TICKET_SECRET",
     "NEXT_PUBLIC_WS_URL",
     "NEXT_PUBLIC_SITE_URL",
   ])("reports %s when it is missing", (key) => {
@@ -64,6 +66,10 @@ describe("parseEnv", () => {
 
   it("rejects a short AUTH_SECRET", () => {
     expectError({ ...validEnv, AUTH_SECRET: "too-short" }, "at least 32 characters");
+  });
+
+  it("rejects a short WS_TICKET_SECRET", () => {
+    expectError({ ...validEnv, WS_TICKET_SECRET: "short" }, "WS_TICKET_SECRET");
   });
 
   it("rejects an http NEXT_PUBLIC_WS_URL", () => {

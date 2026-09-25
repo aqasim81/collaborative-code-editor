@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Phase 4 — WebSocket Server & Room Architecture (#7)
+- HTTP + WebSocket server (`ws`) on `WS_SERVER_PORT` (default 8080); refuses to start with an invalid environment (Zod)
+- Connections use `/<roomId>?ticket=<jwt>`; a missing, forged, expired, over-long or wrong-room ticket is rejected with 401 before the socket opens (Invariants 1 and 2)
+- Web app `getRoomTicket(roomId)` server action issues a 5-minute HS256 room ticket only to members of the room; new `WS_TICKET_SECRET` in both apps, `.env.example`, turbo build env, CI and test placeholders (ADR 0001 addendum)
+- Room manager: room created on first join, clients tracked, empty rooms destroyed after `ROOM_GRACE_PERIOD_MS` (default 30 s)
+- Inbound text messages Zod-validated, binary frames reserved for Yjs, 1 MiB frame cap, per-socket token bucket (flood → close 1008)
+- `GET /health` returns `{ status, rooms, connections }`; SIGINT/SIGTERM close every connection with 1001 and stop the server
+- pino structured logging (`LOG_LEVEL`); the dev script loads `apps/web/.env` so both apps share the ticket secret
+- Shared `ClientMessage`, `ServerMessage`, `RoomTicketClaims` and `ROOM_TICKET_TTL_SECONDS`
+
 ### Phase 3 — Editor UI (#6)
 - `/room/[id]` renders a CodeMirror 6 editor that fills the viewport below the navbar and follows window resizes
 - The page returns 404 unless the session user is a member of the room (`lib/rooms.ts`, Invariant 2)

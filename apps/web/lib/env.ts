@@ -12,6 +12,8 @@ const envSchema = z.object({
   AUTH_GITHUB_ID: z.string().min(1),
   AUTH_GITHUB_SECRET: z.string().min(1),
   AUTH_URL: z.string().url().optional(),
+  // Signs the short-lived room tickets the WS server verifies; must match the WS server's value.
+  WS_TICKET_SECRET: z.string().min(32, "must be at least 32 characters (openssl rand -hex 32)"),
   NEXT_PUBLIC_WS_URL: z
     .string()
     .url()

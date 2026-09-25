@@ -6,7 +6,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 3 complete — CodeMirror 6 editor on the members-only room page (`/room/[id]`), 10-language selector, dev seed (`pnpm --filter @collab-editor/web db:seed` creates `/room/seed-room`). Local DB: `docker compose up -d` (port 5434). Next: Phase 4 (WebSocket server, #7).
+Phase 4 complete — WS server (`apps/ws-server`) with room-ticket auth on upgrade: the web action `getRoomTicket` issues 5-minute HS256 tickets after a membership check, and `WS_TICKET_SECRET` is shared by both apps (ADR 0001 addendum). Room lifecycle with grace-period cleanup, Zod-validated and rate-limited messages, `/health`, graceful shutdown. Local DB: `docker compose up -d` (port 5434); dev seed creates `/room/seed-room`. Next: Phase 5 (Yjs sync, #8).
 
 ## Stack
 

@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 
 // Invariant 6: secrets stay out of the client. Client components must not import
 // modules that read server environment variables or hold server-only clients.
-const SERVER_ONLY_MODULES = ["@/lib/env", "@/lib/auth", "@/lib/auth.config", "@/lib/prisma"];
+const SERVER_ONLY_MODULES = [
+  "@/lib/env",
+  "@/lib/auth",
+  "@/lib/auth.config",
+  "@/lib/prisma",
+  "@/lib/ws-ticket",
+];
 const SOURCE_DIRS = ["app", "components", "lib", "actions"];
 const APP_ROOT = join(__dirname, "..", "..");
 

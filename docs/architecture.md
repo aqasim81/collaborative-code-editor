@@ -28,7 +28,7 @@ The collaborative code editor is a three-component system:
 │                  WebSocket Server (Node.js)               │
 │  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐   │
 │  │  ws Library   │  │  Room Mgr   │  │  Auth Verify  │   │
-│  │  (Transport)  │←→│  (Lifecycle) │  │  (JWT Check)  │   │
+│  │  (Transport)  │←→│  (Lifecycle) │  │ (Room Ticket) │   │
 │  └──────────────┘  └──────┬──────┘  └───────────────┘   │
 │                           │                               │
 │                    ┌──────┴──────┐                        │
@@ -55,8 +55,8 @@ The collaborative code editor is a three-component system:
 
 1. User authenticates via GitHub OAuth → Auth.js creates session + JWT
 2. User creates/joins room → Next.js Server Action creates room record in PostgreSQL
-3. User enters editor → Browser connects to WS server with JWT + room ID
-4. WS server verifies JWT → Joins user to room, syncs Yjs document from LevelDB
+3. User enters editor → `getRoomTicket(roomId)` server action checks `RoomMember` and returns a 5-minute HS256 room ticket
+4. Browser connects to `ws://<ws-server>/<roomId>?ticket=<jwt>` → WS server verifies the ticket on upgrade (401 otherwise) → joins the room, syncs the Yjs document from LevelDB (Phase 5)
 5. User types → CodeMirror → Yjs doc update → WS broadcast to room
 6. Remote updates arrive → WS → Yjs merge → CodeMirror re-renders
 7. Cursor moves → Awareness protocol → WS broadcast → Remote cursor overlay
@@ -109,6 +109,14 @@ Postgres holds identity and room metadata; document content lives in LevelDB on 
 - `middleware.ts` redirects signed-out requests for `/dashboard/*` and `/room/*` to `/sign-in?callbackUrl=…`; the sign-in action only follows same-origin callbacks
 - The session JWT carries `id`, `name` and `picture`; it is a JWE encrypted with `AUTH_SECRET` (see ADR 0001)
 - `apps/web/lib/env.ts` validates environment variables with Zod when `next.config.ts` loads
+
+## WS Server (Phase 4)
+
+- **Auth on upgrade:** `/<roomId>?ticket=<jwt>`. The ticket is HS256, signed with `WS_TICKET_SECRET`, claims `{ sub, aud, name, roomId, iat, exp }` with audience `collab-editor:ws-room`, lifetime ≤ 5 minutes (`ROOM_TICKET_TTL_SECONDS` in `@collab-editor/shared`). It is issued by `apps/web/actions/room-ticket.ts` only after a `RoomMember` check. Missing, forged, wrong-audience, expired, over-long or wrong-room tickets and unparseable request targets get `401` before the socket is accepted; an upgrade whose check finishes after shutdown began gets `503` (ADR 0001 addendum). The WS server never touches Postgres.
+- **Rooms:** `src/rooms/room-manager.ts` creates a room on first join, tracks its sockets, and destroys it `ROOM_GRACE_PERIOD_MS` (default 30 s) after the last client leaves unless someone rejoins.
+- **Messages:** text frames are Zod-validated (`{ type: "ping" }` today) and answered with `{ type: "error" }` otherwise; binary frames are reserved for Yjs (Phase 5). Each socket has a token bucket (100 burst, 50/s); a flood is closed with 1008. Frames are capped at 1 MiB.
+- **Ops:** `GET /health` → `{ status, rooms, connections }`. SIGINT/SIGTERM close every socket with 1001 (terminated after 5 s), clear rooms and stop listening. Logs are pino JSON (`LOG_LEVEL`).
+- **Local env:** `pnpm --filter @collab-editor/ws-server dev` loads `apps/web/.env` when it exists, so both apps share one `WS_TICKET_SECRET`; port `WS_SERVER_PORT` (default 8080).
 
 ## Component Boundaries
 
