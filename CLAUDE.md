@@ -6,7 +6,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 0 complete — Project scaffolded. Next: Phase 1 (Monorepo Scaffolding & Quality Infrastructure).
+Phase 1 complete — monorepo, quality tooling and CI in place. Next: Phase 2 (Database Schema & Authentication, #5).
 
 ## Stack
 

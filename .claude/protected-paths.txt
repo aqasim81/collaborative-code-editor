@@ -2,3 +2,4 @@
 # Examples:
 # src/gen/*
 # migrations/*
+apps/web/components/ui/*
