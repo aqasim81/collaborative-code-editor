@@ -52,3 +52,6 @@ Thumbs.db
 secrets/
 .claude/forbidden-terms.local.txt
 docs/showcase/
+
+# Browser automation output
+.playwright-mcp/

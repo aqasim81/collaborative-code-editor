@@ -16,6 +16,15 @@ export default defineConfig({
     include: ["**/*.test.{ts,tsx}"],
     exclude: ["node_modules", ".next"],
     passWithNoTests: true,
+    // Placeholder values so modules importing lib/env.ts load under test. Not real credentials.
+    env: {
+      DATABASE_URL: "postgresql://test:test@localhost:5432/test",
+      AUTH_SECRET: "test-secret-test-secret-test-secret-00",
+      AUTH_GITHUB_ID: "test-github-id",
+      AUTH_GITHUB_SECRET: "test-github-secret",
+      NEXT_PUBLIC_WS_URL: "ws://localhost:8080",
+      NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "text-summary", "json", "html", "lcov"],

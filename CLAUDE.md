@@ -6,7 +6,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 1 complete — monorepo, quality tooling and CI in place. Next: Phase 2 (Database Schema & Authentication, #5).
+Phase 2 complete — Prisma schema (rooms + membership), GitHub sign-in with JWT sessions, protected routes, env validation. Local DB: `docker compose up -d` (port 5434). Next: Phase 3 (Editor UI, #6).
 
 ## Stack
 

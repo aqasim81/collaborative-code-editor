@@ -79,8 +79,8 @@ The collaborative code editor is a three-component system:
 | Phase | Service | Type | Provisioning | Status |
 |-------|---------|------|-------------|--------|
 | Phase 1 | None | — | — | Ready |
-| Phase 2 | PostgreSQL | External | Cloud provisioning required | Not provisioned |
-| Phase 2 | GitHub OAuth App | External | Manual setup in GitHub Settings | Not created |
+| Phase 2 | PostgreSQL 16 | Local (Docker Compose) | `docker compose up -d` (host port 5434); hosted DB for deploy | Local ready |
+| Phase 2 | GitHub OAuth App | External | Manual setup in GitHub Settings | Owner action |
 | Phase 3 | None | — | — | Ready |
 | Phase 4 | WebSocket Server (ws) | Self-contained | Runs locally / deploy to cloud | Ready |
 | Phase 4 | LevelDB (y-leveldb) | Embedded | File-based, bundled with npm package | Ready |
@@ -88,9 +88,27 @@ The collaborative code editor is a three-component system:
 | Phase 6 | None | — | — | Ready |
 | Phase 7 | None | — | — | Ready |
 
-**Blockers before Phase 2:**
-- **PostgreSQL** — Provision a database (Vercel Postgres, Supabase, Neon, etc.)
-- **GitHub OAuth App** — Create at GitHub Settings → Developer Settings → OAuth Apps
+**Owner setup for sign-in:**
+- **GitHub OAuth App** — Create at GitHub Settings → Developer Settings → OAuth Apps, callback `http://localhost:3000/api/auth/callback/github`
+- **Hosted PostgreSQL** — Needed only for deployment (Neon, Supabase, etc.); local development uses Docker Compose
+
+## Data Model
+
+Postgres holds identity and room metadata; document content lives in LevelDB on the WS server.
+
+| Model | Purpose |
+|-------|---------|
+| `User`, `Account`, `Session` | Auth.js Prisma adapter models (`Session` unused under JWT sessions) |
+| `Room` | Room metadata: name, language, creator |
+| `RoomMember` | Membership (`OWNER` / `EDITOR`), keyed by `(roomId, userId)`; grants room access (Invariant 2) |
+
+## Authentication
+
+- `apps/web/lib/auth.config.ts` — edge-safe Auth.js config (GitHub provider, JWT callbacks, `authorized` route check); used by `middleware.ts`
+- `apps/web/lib/auth.ts` — adds the Prisma adapter; exports `auth`, `signIn`, `signOut`, `handlers`
+- `middleware.ts` redirects signed-out requests for `/dashboard/*` and `/room/*` to `/sign-in?callbackUrl=…`; the sign-in action only follows same-origin callbacks
+- The session JWT carries `id`, `name` and `picture`; it is a JWE encrypted with `AUTH_SECRET` (see ADR 0001)
+- `apps/web/lib/env.ts` validates environment variables with Zod when `next.config.ts` loads
 
 ## Component Boundaries
 

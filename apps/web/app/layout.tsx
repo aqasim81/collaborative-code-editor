@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import { Navbar } from "@/components/layout/navbar";
+import { auth } from "@/lib/auth";
+import { toSessionUser } from "@/lib/auth.config";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -6,14 +9,19 @@ export const metadata: Metadata = {
   description: "Real-time collaborative code editor powered by CRDTs",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const user = toSessionUser(await auth());
+
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <Navbar user={user} />
+        {children}
+      </body>
     </html>
   );
 }

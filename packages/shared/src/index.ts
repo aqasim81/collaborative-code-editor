@@ -2,4 +2,4 @@
 
 export type { WsMessage } from "./messages";
 export type { RoomInfo } from "./room";
-export type { UserInfo } from "./user";
+export type { AuthTokenClaims, SessionUser, UserInfo } from "./user";

@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Phase 2 — Database Schema & Authentication (#5)
+- Prisma schema: Auth.js adapter models (User, Account, Session), `Room` and `RoomMember` (OWNER/EDITOR membership, keyed by room and user); `init` migration
+- Local Postgres 16 via `docker-compose.yml` (host port 5434); `db:migrate`, `db:deploy`, `db:studio` scripts; `prisma generate` on install
+- Auth.js v5 with GitHub OAuth and JWT sessions; the token carries user id, name and picture (ADR 0001)
+- Edge-safe `lib/auth.config.ts` for middleware; `lib/auth.ts` adds the Prisma adapter
+- `middleware.ts` redirects signed-out visitors from `/dashboard/*` and `/room/*` to `/sign-in`
+- Sign-in page and server actions; the callback URL is limited to same-origin paths (`lib/redirect.ts`)
+- Navbar shows avatar, name and sign-out when signed in, and a sign-in link otherwise; placeholder `/dashboard`
+- `lib/env.ts` validates environment variables with Zod when `next.config.ts` loads, so a missing variable fails the build
+- Shared `SessionUser` and `AuthTokenClaims` types
+- Tailwind CSS 4 wired through `@tailwindcss/postcss`
+- Migrations added to `.claude/protected-paths.txt`
+- GitHub provider declares its OAuth issuer (`https://github.com/login/oauth`) so the callback's `iss` parameter validates
+
 ### Phase 1 — Monorepo Scaffolding & Quality Infrastructure
 - Starter-kit harness installed: guard hooks (secrets, protected paths, forbidden terms), workflow rules, review policy, PR template, ADR and spec templates (#1)
 - `apps/web/components/ui/*` (generated shadcn components) added to `.claude/protected-paths.txt` so they can't be edited by hand (#4)
