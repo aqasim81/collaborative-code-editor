@@ -4,6 +4,7 @@ import { Compartment } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { useEffect, useRef } from "react";
+import type { Awareness } from "y-protocols/awareness";
 import type * as Y from "yjs";
 import type { LanguageId } from "@/lib/languages";
 import { loadLanguage } from "./extensions";
@@ -13,6 +14,8 @@ interface CodeEditorProps {
   language: LanguageId;
   /** The room's shared text; the editor never holds document state of its own (Invariant 3). */
   text: Y.Text;
+  /** The room's presence: this user's cursor goes out through it, other users' cursors come in. */
+  awareness: Awareness;
 }
 
 // Let the editor take its parent's height and scroll internally.
@@ -21,12 +24,12 @@ const fullHeight = EditorView.theme({
   ".cm-scroller": { overflow: "auto" },
 });
 
-export function CodeEditor({ language, text }: CodeEditorProps) {
+export function CodeEditor({ language, text, awareness }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const languageCompartment = useRef(new Compartment());
 
-  // One view per shared text; the language effect below reconfigures it in place.
+  // One view per shared text and presence; the language effect below reconfigures it in place.
   useEffect(() => {
     const parent = containerRef.current;
     if (!parent) {
@@ -36,7 +39,7 @@ export function CodeEditor({ language, text }: CodeEditorProps) {
       parent,
       doc: text.toString(),
       extensions: [
-        collaborativeSetup(text),
+        collaborativeSetup(text, awareness),
         oneDark,
         fullHeight,
         languageCompartment.current.of([]),
@@ -47,7 +50,7 @@ export function CodeEditor({ language, text }: CodeEditorProps) {
       view.destroy();
       viewRef.current = null;
     };
-  }, [text]);
+  }, [text, awareness]);
 
   useEffect(() => {
     let cancelled = false;

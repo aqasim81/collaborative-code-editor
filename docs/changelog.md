@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Phase 6 — Presence and cursors (#9)
+- Remote carets and selections in each user's colour (y-codemirror.next with the room's awareness); a name label shows above a remote caret for 3 s after it moves or its user joins, and on hover
+- A presence sidebar lists everyone in the room once (several tabs make one entry), this user first and marked, with GitHub avatar or initials ringed in their colour; it updates on join and leave but not on cursor moves
+- The toolbar shows the connection: Connecting / Connected / Reconnecting (yellow while a dropped socket or ticket refresh comes back) / Disconnected (red after 3 failed attempts in a row, or when the room can't be joined)
+- Colours come from a hash of the user id (`userColor` in `@collab-editor/shared`, 16 colours), so a user has the same colour in every session
+- The room page passes the session user to the client; room tickets carry the avatar (https only)
+- The room toolbar is server-rendered (shown as Connecting) until the connection exists, instead of appearing after hydration
+- Labels sit just above the line (below the caret on line 1, where there is no room above) and a new label is drawn for every caret move, since CodeMirror dropped a reused label next to y-codemirror.next's caret
+- Tests: colour stability and spread, presence list ordering and dedup, label timing per user, label position, a label on every step of a caret walking beside its y-codemirror caret, line-1 placement, caret and selection colours, status mapping, the page's user prop
+- Checked in a browser with two windows: carets, selections and labels follow every move, labels hide after 3 s, the status goes green → yellow → red when the WS server is killed and back to green when it returns, and a closed window's caret disappears for the other
+
+### Presence ownership and identity (#32)
+- The WS server shows the ticket's identity in presence, whatever `user` a client sends
+- A connection that reconnected with the same client id owned nothing, so its presence was not cleared when it dropped (a ghost for up to 30 s) and could be overwritten; ownership now follows `updated` as well as `added` ids, and any removal releases it
+- Clients re-announce presence with a newer clock on each connect, so it reappears at once after a ticket refresh or network drop instead of up to 15 s later
+- One presence per connection (the first id it announces); each id stays bound to its user while the server runs, even across an empty room's teardown (up to 100 per user, forgetting only that user's own unused ids), so another member can't claim it between its owner's disconnect and reconnect; another connection of the same user may take a presence over
+- A connection whose first presence uses another user's id (a collision, or an id squatted after a server restart) is closed with `4002`; the web client moves to a new client id, keeping its edits and presence, and reconnects. Bindings unused for an hour are pruned whenever a room is created
+- A presence `cursor` must be null or a pair of root-text relative positions, or the frame is refused (1003): a malformed cursor crashed the carets and labels of everyone in the room. The label plugin also skips a cursor it can't place
+- After a `4002`, the client resets its presence from the session user instead of copying its local state, which the server may have just overwritten with the squatter's; "(you)" in the presence list comes from the session
+- Other entries that would change another user's presence, add a second id or remove a presence that doesn't exist are dropped instead of closing the connection, so an honest client's timeout echo is never punished and unknown ids leave no metadata
+- Tests: reconnect and abrupt drop end to end, timeout release, same-user takeover, the one-id rule, same-clock removal echoes, id binding across a reconnect race, bounded metadata and remembered-id eviction, identity rewrite, avatar claim validation
+
+### Test fix
+- The short-ticket expiry test signed `exp` one second ahead of the floored clock and could get `401` on a loaded machine; it now leaves at least a second
+
+### Heartbeat (#33)
+- The WS server pings every connection every 30 s and terminates one that did not answer the previous ping, so dead sockets stop holding rooms and presences until their ticket expires
+
 ### Ticket header and upgrade rate limit (#19)
 - The room ticket travels in `Sec-WebSocket-Protocol` (`collab.v1, ticket.<jwt>`, built by `roomTicketProtocols` in `@collab-editor/shared`) instead of the URL, so proxy logs never hold it; the handshake response selects `collab.v1` only and never echoes the ticket
 - `?ticket=` in the URL is no longer accepted; a connection without the header ticket gets `401`

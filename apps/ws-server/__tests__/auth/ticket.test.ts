@@ -10,8 +10,25 @@ describe("verifyRoomTicket (Invariants 1 and 2)", () => {
 
     expect(result).toMatchObject({
       success: true,
-      data: { sub: "user-1", name: "Ada", roomId: "room-1" },
+      data: { sub: "user-1", name: "Ada", image: null, roomId: "room-1" },
     });
+  });
+
+  it("carries the user's avatar", async () => {
+    const image = "https://avatars.githubusercontent.com/u/1?v=4";
+    const result = await verifyRoomTicket(await signTicket({ image }), "room-1", TEST_SECRET);
+
+    expect(result).toMatchObject({ success: true, data: { image } });
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "http://example.com/a.png",
+    "not a url",
+  ])("rejects an avatar that is not an https URL: %s", async (image) => {
+    const result = await verifyRoomTicket(await signTicket({ image }), "room-1", TEST_SECRET);
+
+    expect(result).toEqual({ success: false, error: "invalid ticket claims" });
   });
 
   it("rejects a ticket for another room", async () => {

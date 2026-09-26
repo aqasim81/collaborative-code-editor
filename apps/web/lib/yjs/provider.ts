@@ -1,12 +1,40 @@
-import { roomTicketProtocols, TICKET_EXPIRED_CLOSE_CODE } from "@collab-editor/shared";
+import {
+  PRESENCE_ID_TAKEN_CLOSE_CODE,
+  presenceUser,
+  roomTicketProtocols,
+  type SessionUser,
+  SHARED_TEXT_NAME,
+  TICKET_EXPIRED_CLOSE_CODE,
+} from "@collab-editor/shared";
+import type { Awareness } from "y-protocols/awareness";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import type { RoomTicketResult } from "@/actions/room-ticket";
+import { setLocalUser } from "./awareness";
 
-export type ConnectionStatus = "connecting" | "connected" | "disconnected";
+/** What the socket is doing, as y-websocket reports it. */
+type SocketStatus = "connecting" | "connected" | "disconnected";
 
-/** Name of the shared text every client binds its editor to. */
-export const SHARED_TEXT_NAME = "codemirror";
+/** What the user is told: yellow while (re)connecting, red once retries keep failing. */
+export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
+
+/** Failed attempts in a row after which the room counts as disconnected rather than reconnecting. */
+export const FAILED_ATTEMPTS_BEFORE_DISCONNECTED = 3;
+
+export function toConnectionStatus(
+  socket: SocketStatus,
+  everConnected: boolean,
+  failedAttempts: number,
+): ConnectionStatus {
+  if (socket === "connected") {
+    return "connected";
+  }
+  if (failedAttempts >= FAILED_ATTEMPTS_BEFORE_DISCONNECTED) {
+    return "disconnected";
+  }
+  // A dropped socket or a ticket refresh (every few minutes) reconnects at once: not worth a red light.
+  return everConnected ? "reconnecting" : "connecting";
+}
 
 /** A ticket this close to expiry is replaced before the next connection attempt. */
 export const TICKET_REFRESH_MARGIN_SECONDS = 30;
@@ -14,6 +42,8 @@ export const TICKET_REFRESH_MARGIN_SECONDS = 30;
 export interface ConnectRoomOptions {
   serverUrl: string;
   roomId: string;
+  /** Who is connecting; others see the WS server's copy of it, taken from the ticket. */
+  user: SessionUser;
   fetchTicket: (roomId: string) => Promise<RoomTicketResult>;
   onStatus?: (status: ConnectionStatus) => void;
   /** Called when no ticket can be obtained; the connection then stays down. */
@@ -27,6 +57,8 @@ export interface RoomConnection {
   doc: Y.Doc;
   text: Y.Text;
   provider: WebsocketProvider;
+  /** Presence only (cursors, who is here): never stored (Invariant 5). */
+  awareness: Awareness;
   destroy(): void;
 }
 
@@ -39,6 +71,7 @@ export interface RoomConnection {
 export function connectRoom({
   serverUrl,
   roomId,
+  user,
   fetchTicket,
   onStatus,
   onError,
@@ -52,8 +85,10 @@ export function connectRoom({
     disableBc: true,
     ...(WebSocketPolyfill ? { WebSocketPolyfill } : {}),
   });
+  setLocalUser(provider.awareness, user);
   let expiresAt = 0;
   let destroyed = false;
+  let everConnected = false;
 
   async function connectWithFreshTicket(): Promise<void> {
     let result: RoomTicketResult;
@@ -77,8 +112,41 @@ export function connectRoom({
     provider.connect();
   }
 
-  provider.on("status", ({ status }: { status: ConnectionStatus }) => onStatus?.(status));
+  provider.on("status", ({ status }: { status: SocketStatus }) => {
+    if (status === "connected") {
+      everConnected = true;
+      // The server and the other clients may already hold this client's state at its current clock (it
+      // was here before this socket), and would ignore it: re-announce it with a newer one.
+      const state = provider.awareness.getLocalState();
+      if (state !== null) {
+        provider.awareness.setLocalState(state);
+      }
+    }
+    onStatus?.(toConnectionStatus(status, everConnected, provider.wsUnsuccessfulReconnects));
+  });
+  /**
+   * Moves this client to a new random client id, keeping its presence. Yjs does the same to a document
+   * whose id collides; content already written under the old id is unaffected.
+   */
+  function takeNewClientId(): void {
+    const { awareness } = provider;
+    // Not the current local state: the server may have relayed the squatter's state for this id first.
+    const state = { user: presenceUser(user), cursor: null };
+    awareness.states.delete(awareness.clientID);
+    awareness.meta.delete(awareness.clientID);
+    const id = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
+    doc.clientID = id;
+    awareness.clientID = id;
+    // Twice: a new id starts at clock 0, which the server would not apply over nothing.
+    awareness.setLocalState(state);
+    awareness.setLocalState(state);
+  }
+
   provider.on("connection-close", (event: CloseEvent | null) => {
+    if (event?.code === PRESENCE_ID_TAKEN_CLOSE_CODE) {
+      // Before y-websocket's own reconnect, which announces whatever id the client has then.
+      takeNewClientId();
+    }
     // The server's clock decides expiry, so its close code wins over the expiry this client last saw.
     const expired =
       event?.code === TICKET_EXPIRED_CLOSE_CODE ||
@@ -97,6 +165,7 @@ export function connectRoom({
     doc,
     text: doc.getText(SHARED_TEXT_NAME),
     provider,
+    awareness: provider.awareness,
     destroy() {
       destroyed = true;
       provider.destroy();

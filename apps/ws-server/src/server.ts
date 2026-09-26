@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 import {
+  presenceUser,
   ROOM_PROTOCOL,
   ROOM_TICKET_TTL_SECONDS,
   type RoomTicketClaims,
@@ -32,6 +33,8 @@ import {
   createSyncRoom,
   INVALID_MESSAGE_CLOSE_CODE,
   type Peer,
+  type PresenceBinding,
+  prunePresenceIds,
   type SyncRoom,
 } from "./sync/sync-room";
 
@@ -52,6 +55,8 @@ export interface ServerOptions {
   upgradeRateLimit?: RateLimitOptions;
   /** How long shutdown waits for a client's close handshake before terminating it. */
   shutdownTimeoutMs?: number;
+  /** Ping interval; a connection that hasn't answered the previous ping by the next one is terminated. */
+  heartbeatIntervalMs?: number;
 }
 
 export interface HealthStats {
@@ -74,6 +79,7 @@ export interface RunningServer {
 // Room ids are cuids today; allow the URL-safe alphabet and nothing that needs decoding.
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 
 /** Parses a request target; null for one a client malformed on purpose (e.g. `http://[`). */
 function parseRequestUrl(url: string | undefined): URL | null {
@@ -127,11 +133,35 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     };
   }
   const shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
+  const heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
+  // Whose awareness client id is whose, per room, for the life of the process: it must outlive a room
+  // destroyed while empty, or another member could claim a returning user's id.
+  const presenceIds = new Map<string, Map<number, PresenceBinding>>();
   const rooms: RoomManager<Peer, SyncRoom> = createRoomManager<Peer, SyncRoom>({
     gracePeriodMs: options.roomGracePeriodMs,
     logger,
-    createState: (roomId, previous) =>
-      createSyncRoom({ roomId, store, logger, previous, onFailure: () => rooms.evict(roomId) }),
+    createState: (roomId, previous) => {
+      // Rooms come and go rarely; sweep every room's stale bindings so the table stays bounded.
+      for (const [id, bindings] of presenceIds) {
+        prunePresenceIds(bindings, Date.now());
+        if (bindings.size === 0) {
+          presenceIds.delete(id);
+        }
+      }
+      let ids = presenceIds.get(roomId);
+      if (!ids) {
+        ids = new Map();
+        presenceIds.set(roomId, ids);
+      }
+      return createSyncRoom({
+        roomId,
+        store,
+        logger,
+        previous,
+        presenceIds: ids,
+        onFailure: () => rooms.evict(roomId),
+      });
+    },
     destroyState: (room) => room.destroy(),
   });
   const upgradeLimiter = createKeyedRateLimiter(
@@ -162,6 +192,7 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     const { roomId, sub: userId } = claims;
     const log = logger.child({ roomId, userId });
     const peer: Peer = {
+      user: presenceUser({ id: userId, name: claims.name, image: claims.image }),
       send(data) {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(data);
@@ -185,6 +216,22 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
       },
       Math.max(0, expiresInMs),
     );
+
+    // A connection that died without a close frame (sleep, lost network) would otherwise hold its room
+    // slot and its presence until the ticket expires. Browsers answer pings on their own.
+    let answered = true;
+    ws.on("pong", () => {
+      answered = true;
+    });
+    const heartbeat = setInterval(() => {
+      if (!answered) {
+        log.info("no pong, terminating connection");
+        ws.terminate();
+        return;
+      }
+      answered = false;
+      ws.ping();
+    }, heartbeatIntervalMs);
 
     const limiter = createRateLimiter(rateLimit);
     const byteLimiter = createRateLimiter(byteRateLimit);
@@ -228,6 +275,7 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     ws.on("error", (error) => log.warn({ err: error }, "socket error"));
     ws.on("close", () => {
       clearTimeout(expiryTimer);
+      clearInterval(heartbeat);
       room.state.removePeer(peer);
       rooms.leave(roomId, peer);
       log.info("client left");

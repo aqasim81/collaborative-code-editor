@@ -12,7 +12,12 @@ describe("signRoomTicket", () => {
   it("signs an HS256 ticket bound to the user and room", async () => {
     const now = Math.floor(Date.now() / 1000);
     const { ticket, expiresAt } = await signRoomTicket(
-      { userId: "u1", name: "Ada", roomId: "r1" },
+      {
+        userId: "u1",
+        name: "Ada",
+        image: "https://avatars.githubusercontent.com/u/1",
+        roomId: "r1",
+      },
       secret,
       now,
     );
@@ -23,6 +28,7 @@ describe("signRoomTicket", () => {
       sub: "u1",
       aud: ROOM_TICKET_AUDIENCE,
       name: "Ada",
+      image: "https://avatars.githubusercontent.com/u/1",
       roomId: "r1",
       iat: now,
     });
@@ -30,12 +36,29 @@ describe("signRoomTicket", () => {
     expect(expiresAt).toBe(now + ROOM_TICKET_TTL_SECONDS);
   });
 
+  it.each([
+    null,
+    "http://example.com/a.png",
+    "javascript:alert(1)",
+  ])("leaves out an avatar the WS server would refuse: %s", async (image) => {
+    const { ticket } = await signRoomTicket(
+      { userId: "u1", name: "Ada", image, roomId: "r1" },
+      secret,
+    );
+
+    const { payload } = await jwtVerify(ticket, key);
+    expect(payload.image).toBeNull();
+  });
+
   it("lives at most five minutes", () => {
     expect(ROOM_TICKET_TTL_SECONDS).toBeLessThanOrEqual(300);
   });
 
   it("cannot be verified with another secret", async () => {
-    const { ticket } = await signRoomTicket({ userId: "u1", name: "Ada", roomId: "r1" }, secret);
+    const { ticket } = await signRoomTicket(
+      { userId: "u1", name: "Ada", image: null, roomId: "r1" },
+      secret,
+    );
 
     await expect(jwtVerify(ticket, new TextEncoder().encode("x".repeat(32)))).rejects.toThrow();
   });

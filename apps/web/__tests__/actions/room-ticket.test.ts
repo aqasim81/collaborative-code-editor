@@ -36,7 +36,7 @@ describe("getRoomTicket", () => {
         result.data.ticket,
         new TextEncoder().encode(env.WS_TICKET_SECRET),
       );
-      expect(payload).toMatchObject({ sub: "u1", name: "Ada", roomId: "r1" });
+      expect(payload).toMatchObject({ sub: "u1", name: "Ada", image: null, roomId: "r1" });
     }
   });
 

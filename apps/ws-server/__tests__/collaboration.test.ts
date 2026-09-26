@@ -5,7 +5,7 @@ import { type RunningServer, startServer } from "../src/server";
 import { silentLogger } from "./helpers/logger";
 import { waitFor } from "./helpers/sockets";
 import { createMemoryStore, storedText, tempDir } from "./helpers/stores";
-import { TEST_SECRET } from "./helpers/tickets";
+import { TEST_SECRET, type TicketOverrides } from "./helpers/tickets";
 import { connectYClient, synced, type YClient } from "./helpers/yjs-clients";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -25,8 +25,13 @@ async function start(store: DocumentStore = createMemoryStore()): Promise<Runnin
   return result.data;
 }
 
-async function client(server: RunningServer, roomId = "room-1", doc?: Y.Doc): Promise<YClient> {
-  const c = await connectYClient(server.port, roomId, doc);
+async function client(
+  server: RunningServer,
+  roomId = "room-1",
+  doc?: Y.Doc,
+  ticket?: TicketOverrides,
+): Promise<YClient> {
+  const c = await connectYClient(server.port, roomId, doc, ticket);
   cleanups.push(() => c.destroy());
   await synced(c);
   return c;
@@ -217,5 +222,43 @@ describe("presence (Invariant 5)", () => {
     expect(room?.awareness.getStates().has(aId)).toBe(false);
     // Presence traffic never reaches the document store.
     expect(store.updates.size).toBe(0);
+  });
+
+  it("clears the presence of a client that reconnected, when its connection drops (#32)", async () => {
+    const server = await start();
+    cleanups.push(() => server.close());
+    const a = await client(server);
+    const b = await client(server);
+    const aId = a.doc.clientID;
+    a.provider.awareness.setLocalStateField("mark", 1);
+    await waitFor(() => b.provider.awareness.getStates().get(aId)?.mark === 1);
+
+    // The socket drops (no goodbye message) and y-websocket reconnects with the same client id.
+    a.provider.ws?.close();
+    await waitFor(() => !b.provider.awareness.getStates().has(aId));
+    await synced(a);
+    // The web provider re-announces presence on every connect.
+    a.provider.awareness.setLocalStateField("mark", 2);
+    await waitFor(() => b.provider.awareness.getStates().get(aId)?.mark === 2);
+
+    // Dropped again, for good this time: nobody should keep seeing a ghost.
+    a.provider.shouldConnect = false;
+    a.provider.ws?.close();
+    await waitFor(() => !b.provider.awareness.getStates().has(aId));
+  });
+
+  it("shows other clients the ticket's identity, not the one a client claims (#32)", async () => {
+    const server = await start();
+    cleanups.push(() => server.close());
+    const a = await client(server, "room-1", undefined, { sub: "user-2", name: "Mallory" });
+    const b = await client(server);
+    const aId = a.doc.clientID;
+
+    a.provider.awareness.setLocalStateField("user", { id: "user-1", name: "Ada" });
+    await waitFor(() => b.provider.awareness.getStates().has(aId));
+    expect(b.provider.awareness.getStates().get(aId)?.user).toMatchObject({
+      id: "user-2",
+      name: "Mallory",
+    });
   });
 });

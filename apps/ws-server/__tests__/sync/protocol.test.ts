@@ -4,6 +4,7 @@ import { Awareness, encodeAwarenessUpdate } from "y-protocols/awareness";
 import * as Y from "yjs";
 import {
   encodeAwareness,
+  encodeAwarenessEntries,
   encodeSyncStep1,
   encodeSyncStep2,
   encodeUpdate,
@@ -55,14 +56,43 @@ describe("parseSyncMessage (Invariant 1)", () => {
       data: {
         type: "awareness",
         update,
-        clients: [{ clientId: awareness.clientID, clock: 1 }],
+        clients: [{ clientId: awareness.clientID, clock: 1, state: { name: "Ada" } }],
       },
     });
+    // A null state removes that client's presence.
+    const removal = encodeAwarenessUpdate(awareness, [awareness.clientID], new Map());
+    expect(parseSyncMessage(encodeAwareness(removal))).toMatchObject({
+      success: true,
+      data: { clients: [{ clientId: awareness.clientID, clock: 1, state: null }] },
+    });
+    // Entries encode back to the same update.
+    expect(
+      encodeAwarenessEntries([{ clientId: awareness.clientID, clock: 1, state: { name: "Ada" } }]),
+    ).toEqual(update);
     expect(parseSyncMessage(frame(3))).toEqual({
       success: true,
       data: { type: "query-awareness" },
     });
     awareness.destroy();
+  });
+
+  // Relative positions as y-codemirror.next puts them in awareness (see the accept test below).
+  const rootPos = { type: null, tname: "codemirror", item: { client: 7, clock: 3 }, assoc: 0 };
+  const nestedPos = { type: { client: 9, clock: 0 }, tname: null, item: null, assoc: 0 };
+
+  it("accepts cursors in the shape y-codemirror.next sends, or none", () => {
+    const doc = new Y.Doc();
+    const text = doc.getText("codemirror");
+    text.insert(0, "hello");
+    const pos = (i: number) =>
+      JSON.parse(JSON.stringify(Y.createRelativePositionFromTypeIndex(text, i))) as unknown;
+    for (const state of [
+      { cursor: { anchor: pos(1), head: pos(5) } },
+      { cursor: null },
+      { user: { name: "x" } },
+    ]) {
+      expect(parseSyncMessage(frame(1, frame(1, 1, 1, JSON.stringify(state)))).success).toBe(true);
+    }
   });
 
   it.each([
@@ -78,6 +108,31 @@ describe("parseSyncMessage (Invariant 1)", () => {
     ["awareness with trailing bytes", frame(1, new Uint8Array([...frame(0), 4]))],
     ["awareness with a non-object state", frame(1, frame(1, 1, 1, "[1,2]"))],
     ["awareness with a scalar state", frame(1, frame(1, 1, 1, "42"))],
+    [
+      "a cursor with empty positions",
+      frame(1, frame(1, 1, 1, JSON.stringify({ cursor: { anchor: {}, head: {} } }))),
+    ],
+    [
+      "a cursor inside a nested type the room may not have",
+      frame(1, frame(1, 1, 1, JSON.stringify({ cursor: { anchor: nestedPos, head: nestedPos } }))),
+    ],
+    [
+      "a cursor without a head",
+      frame(1, frame(1, 1, 1, JSON.stringify({ cursor: { anchor: rootPos } }))),
+    ],
+    [
+      "a cursor in a text other than the room's",
+      frame(
+        1,
+        frame(
+          1,
+          1,
+          1,
+          JSON.stringify({ cursor: { anchor: { ...rootPos, tname: "other" }, head: rootPos } }),
+        ),
+      ),
+    ],
+    ["a cursor that is a string", frame(1, frame(1, 1, 1, JSON.stringify({ cursor: "here" })))],
     [
       "an oversized awareness update",
       frame(1, frame(1, 1, 1, JSON.stringify({ x: "y".repeat(70_000) }))),

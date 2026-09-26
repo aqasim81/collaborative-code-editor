@@ -1,5 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
 import type { ConnectRoomOptions } from "@/lib/yjs/provider";
 
@@ -16,6 +18,8 @@ vi.mock("@/actions/room-ticket", () => ({ getRoomTicket }));
 vi.mock("@/lib/yjs/provider", () => ({ connectRoom }));
 
 import { RoomProvider, useRoom } from "@/components/room/room-provider";
+
+const ADA = { id: "u1", name: "Ada", image: null };
 
 function Probe() {
   const { text, status, error } = useRoom();
@@ -39,13 +43,13 @@ describe("RoomProvider", () => {
       text.insert(0, "hello");
       const destroy = vi.fn();
       calls.push({ options, destroy });
-      return { doc, text, provider: {}, destroy };
+      return { doc, text, provider: {}, awareness: new Awareness(doc), destroy };
     });
   });
 
   it("connects to the room with the server action as ticket source", () => {
     render(
-      <RoomProvider roomId="r1" serverUrl="ws://ws.test">
+      <RoomProvider roomId="r1" user={ADA} serverUrl="ws://ws.test">
         <Probe />
       </RoomProvider>,
     );
@@ -55,11 +59,28 @@ describe("RoomProvider", () => {
     expect(options.roomId).toBe("r1");
     expect(options.serverUrl).toBe("ws://ws.test");
     expect(options.fetchTicket).toBe(getRoomTicket);
+    expect(options.user).toEqual(ADA);
+  });
+
+  it("keeps the connection when it re-renders with an equal user", () => {
+    const { rerender } = render(
+      <RoomProvider roomId="r1" user={ADA} serverUrl="ws://ws.test">
+        <Probe />
+      </RoomProvider>,
+    );
+    rerender(
+      <RoomProvider roomId="r1" user={{ ...ADA }} serverUrl="ws://ws.test">
+        <Probe />
+      </RoomProvider>,
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(lastCall().destroy).not.toHaveBeenCalled();
   });
 
   it("reflects connection status and errors, clearing the error once connected", () => {
     render(
-      <RoomProvider roomId="r1" serverUrl="ws://ws.test">
+      <RoomProvider roomId="r1" user={ADA} serverUrl="ws://ws.test">
         <Probe />
       </RoomProvider>,
     );
@@ -75,9 +96,20 @@ describe("RoomProvider", () => {
     expect(screen.getByTestId("probe")).toHaveTextContent("hello|disconnected|");
   });
 
+  it("renders the fallback, also on the server, until the connection exists", () => {
+    const html = renderToString(
+      <RoomProvider roomId="r1" user={ADA} serverUrl="ws://ws.test" fallback={<p>toolbar</p>}>
+        <Probe />
+      </RoomProvider>,
+    );
+
+    expect(html).toContain("toolbar");
+    expect(calls).toHaveLength(0);
+  });
+
   it("destroys the connection on unmount", () => {
     const { unmount } = render(
-      <RoomProvider roomId="r1" serverUrl="ws://ws.test">
+      <RoomProvider roomId="r1" user={ADA} serverUrl="ws://ws.test">
         <Probe />
       </RoomProvider>,
     );

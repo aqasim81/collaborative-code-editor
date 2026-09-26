@@ -4,6 +4,8 @@ import { SignJWT } from "jose";
 export interface RoomTicketSubject {
   userId: string;
   name: string;
+  /** Avatar URL; the WS server accepts only https ones, so anything else is left out. */
+  image: string | null;
   roomId: string;
 }
 
@@ -23,7 +25,8 @@ export async function signRoomTicket(
   nowSeconds: number = Math.floor(Date.now() / 1000),
 ): Promise<RoomTicket> {
   const expiresAt = nowSeconds + ROOM_TICKET_TTL_SECONDS;
-  const ticket = await new SignJWT({ name: subject.name, roomId: subject.roomId })
+  const image = subject.image?.startsWith("https://") ? subject.image : null;
+  const ticket = await new SignJWT({ name: subject.name, image, roomId: subject.roomId })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject(subject.userId)
     .setAudience(ROOM_TICKET_AUDIENCE)

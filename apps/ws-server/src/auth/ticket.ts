@@ -11,6 +11,14 @@ const claimsSchema = z.object({
   sub: z.string().min(1),
   aud: z.literal(ROOM_TICKET_AUDIENCE),
   name: z.string(),
+  // Shown to everyone in the room as an image source, so only https URLs. Tickets from before avatars
+  // were added carry none.
+  image: z
+    .string()
+    .url()
+    .refine((url) => url.startsWith("https://"), "avatar must be an https URL")
+    .nullable()
+    .default(null),
   roomId: z.string().min(1),
   iat: z.number(),
   exp: z.number(),

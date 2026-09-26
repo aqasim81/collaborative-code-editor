@@ -35,7 +35,7 @@ export async function getRoomTicket(roomId: unknown): Promise<RoomTicketResult> 
   }
 
   const data = await signRoomTicket(
-    { userId: user.id, name: user.name, roomId: room.id },
+    { userId: user.id, name: user.name, image: user.image, roomId: room.id },
     env.WS_TICKET_SECRET,
   );
   return { success: true, data };

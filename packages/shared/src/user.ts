@@ -1,10 +1,3 @@
-export interface UserInfo {
-  id: string;
-  name: string;
-  image: string | null;
-  color: string;
-}
-
 /** The signed-in user as exposed by the web app session. */
 export interface SessionUser {
   id: string;

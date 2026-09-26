@@ -1,15 +1,21 @@
+import type { ReactNode } from "react";
 import { LANGUAGES, type LanguageId, toLanguageId } from "@/lib/languages";
 
 interface ToolbarProps {
   roomName: string;
+  /** Shown next to the room name, e.g. the connection status. */
+  status?: ReactNode;
   language: LanguageId;
   onLanguageChange: (language: LanguageId) => void;
 }
 
-export function Toolbar({ roomName, language, onLanguageChange }: ToolbarProps) {
+export function Toolbar({ roomName, status, language, onLanguageChange }: ToolbarProps) {
   return (
     <div className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-neutral-200 px-4 dark:border-neutral-800">
-      <h1 className="truncate text-sm font-medium">{roomName}</h1>
+      <div className="flex min-w-0 items-center gap-3">
+        <h1 className="truncate text-sm font-medium">{roomName}</h1>
+        {status}
+      </div>
       <label className="flex items-center gap-2 text-sm">
         <span>Language</span>
         <select

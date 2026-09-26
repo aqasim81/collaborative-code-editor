@@ -27,13 +27,16 @@ import {
   rectangularSelection,
 } from "@codemirror/view";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
+import type { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
+import { remoteCursorLabels } from "./cursor-layer";
 
 /**
  * CodeMirror's basicSetup with its history swapped for Yjs: edits flow editor → Y.Text (Invariant 3) and
- * Y.UndoManager undoes only this user's own changes.
+ * Y.UndoManager undoes only this user's own changes. Awareness carries this user's cursor to the others
+ * and draws theirs: carets, selections and name labels.
  */
-export function collaborativeSetup(text: Y.Text): Extension {
+export function collaborativeSetup(text: Y.Text, awareness: Awareness): Extension {
   return [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -59,7 +62,7 @@ export function collaborativeSetup(text: Y.Text): Extension {
       ...foldKeymap,
       ...completionKeymap,
     ]),
-    // Remote cursors (awareness) arrive in Phase 6.
-    yCollab(text, null, { undoManager: new Y.UndoManager(text) }),
+    yCollab(text, awareness, { undoManager: new Y.UndoManager(text) }),
+    remoteCursorLabels({ awareness, text }),
   ];
 }

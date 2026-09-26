@@ -13,6 +13,8 @@ export interface RoomTicketClaims {
   sub: string;
   aud: string;
   name: string;
+  /** Avatar URL, shown to the other people in the room. */
+  image: string | null;
   roomId: string;
   iat: number;
   exp: number;
@@ -23,6 +25,13 @@ export interface RoomTicketClaims {
  * "fetch a fresh ticket and reconnect"; a user no longer in the room is refused that ticket.
  */
 export const TICKET_EXPIRED_CLOSE_CODE = 4001;
+
+/**
+ * WebSocket close code for a connection whose first presence uses an awareness client id another user
+ * holds in the room (a collision, or someone squatting it after a server restart). Clients take a new
+ * client id and reconnect.
+ */
+export const PRESENCE_ID_TAKEN_CLOSE_CODE = 4002;
 
 /**
  * WebSocket subprotocol every room connection offers, and the only one the WS server ever selects, so

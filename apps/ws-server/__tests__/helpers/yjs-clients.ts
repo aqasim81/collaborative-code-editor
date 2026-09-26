@@ -3,7 +3,7 @@ import { WebSocket } from "ws";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import { waitFor } from "./sockets";
-import { signTicket } from "./tickets";
+import { signTicket, type TicketOverrides } from "./tickets";
 
 export interface YClient {
   doc: Y.Doc;
@@ -20,9 +20,10 @@ export async function connectYClient(
   port: number,
   roomId = "room-1",
   doc = new Y.Doc(),
+  ticket: TicketOverrides = {},
 ): Promise<YClient> {
   const provider = new WebsocketProvider(`ws://127.0.0.1:${port}`, roomId, doc, {
-    protocols: roomTicketProtocols(await signTicket({ roomId })),
+    protocols: roomTicketProtocols(await signTicket({ ...ticket, roomId })),
     WebSocketPolyfill: WebSocket as unknown as typeof globalThis.WebSocket,
     disableBc: true,
   });

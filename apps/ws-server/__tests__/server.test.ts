@@ -401,11 +401,13 @@ describe("ws server", () => {
     });
 
     it("closes a ticket that expires moments after the upgrade at its exp", async () => {
-      const ticket = await signTicket({ exp: now() + 1 });
+      // exp is in whole seconds and verified against the real clock: `now() + 1` can be only a few ms away,
+      // which a loaded machine misses before the upgrade is verified. Two seconds leave at least one.
+      const ticket = await signTicket({ exp: now() + 2 });
       const ws = await openClient(`${base}/room-1`, roomTicketProtocols(ticket));
       const done = closed(ws);
 
-      vi.advanceTimersByTime(1_000);
+      vi.advanceTimersByTime(2_000);
 
       expect(await done).toEqual({ code: TICKET_EXPIRED_CLOSE_CODE, reason: "ticket expired" });
     });

@@ -36,6 +36,7 @@ export default async function RoomPage({ params }: RoomPageProps) {
         roomId={room.id}
         roomName={room.name}
         initialLanguage={toLanguageId(room.language)}
+        user={user}
         serverUrl={env.NEXT_PUBLIC_WS_URL}
       />
     </main>

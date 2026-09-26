@@ -3,9 +3,10 @@ import { SignJWT } from "jose";
 
 export const TEST_SECRET = "test-ticket-secret-test-ticket-secret-00";
 
-interface TicketOverrides {
+export interface TicketOverrides {
   sub?: string;
   name?: string;
+  image?: string | null;
   roomId?: string;
   iat?: number;
   exp?: number;
@@ -18,7 +19,11 @@ interface TicketOverrides {
 export function signTicket(overrides: TicketOverrides = {}): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const iat = overrides.iat ?? now;
-  return new SignJWT({ name: overrides.name ?? "Ada", roomId: overrides.roomId ?? "room-1" })
+  return new SignJWT({
+    name: overrides.name ?? "Ada",
+    image: overrides.image === undefined ? null : overrides.image,
+    roomId: overrides.roomId ?? "room-1",
+  })
     .setProtectedHeader({ alg: overrides.alg ?? "HS256" })
     .setSubject(overrides.sub ?? "user-1")
     .setAudience(overrides.audience ?? ROOM_TICKET_AUDIENCE)

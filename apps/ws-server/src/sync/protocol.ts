@@ -1,6 +1,8 @@
+import { SHARED_TEXT_NAME } from "@collab-editor/shared";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 import * as Y from "yjs";
+import { z } from "zod";
 import type { Result } from "../result";
 
 // Binary frame layout of the y-websocket protocol: a varUint message type, then its payload.
@@ -15,21 +17,46 @@ const SYNC_UPDATE = 2;
 export interface AwarenessEntry {
   clientId: number;
   clock: number;
+  /** Null removes that client's presence. */
+  state: Record<string, unknown> | null;
 }
 
 export type SyncMessage =
   | { type: "sync-step1"; stateVector: Uint8Array }
   | { type: "sync-step2"; update: Uint8Array }
   | { type: "update"; update: Uint8Array }
-  /** `clients` are the awareness entries (client id and clock) the update carries. */
+  /** `clients` are the awareness entries the update carries, decoded. */
   | { type: "awareness"; update: Uint8Array; clients: AwarenessEntry[] }
   | { type: "query-awareness" };
+
+const idSchema = z.object({
+  client: z.number().int().nonnegative(),
+  clock: z.number().int().nonnegative(),
+});
+
+/**
+ * A Yjs relative position in the room's root text, as y-codemirror.next writes a cursor's anchor and head.
+ * Every client resolves these against its document, and a malformed one (or one inside a nested type the
+ * document doesn't have) throws there, taking that client's cursor plugins down, and a position in another
+ * root type makes every receiver create that type. Only positions in the room's text pass.
+ */
+const relativePositionSchema = z.object({
+  type: z.null(),
+  tname: z.literal(SHARED_TEXT_NAME),
+  item: idSchema.nullable(),
+  assoc: z.number().int(),
+});
+
+const cursorSchema = z
+  .object({ anchor: relativePositionSchema, head: relativePositionSchema })
+  .nullable()
+  .optional();
 
 /** Presence is small (a name, a colour, a cursor); anything bigger is not presence. */
 export const MAX_AWARENESS_UPDATE_BYTES = 64 * 1024;
 
 /**
- * Reads the client ids of an awareness update (`count, (clientId, clock, JSON state) * count`); throws when
+ * Reads the entries of an awareness update (`count, (clientId, clock, JSON state) * count`); throws when
  * it is malformed, too large, or a state is neither an object nor null.
  */
 function readAwarenessClients(update: Uint8Array): AwarenessEntry[] {
@@ -41,11 +68,15 @@ function readAwarenessClients(update: Uint8Array): AwarenessEntry[] {
   const clients: AwarenessEntry[] = [];
   for (let i = 0; i < count; i++) {
     const clientId = decoding.readVarUint(decoder);
-    clients.push({ clientId, clock: decoding.readVarUint(decoder) });
+    const clock = decoding.readVarUint(decoder);
     const state: unknown = JSON.parse(decoding.readVarString(decoder));
     if (typeof state !== "object" || Array.isArray(state)) {
       throw new Error("awareness state must be an object or null");
     }
+    if (state !== null && !cursorSchema.safeParse((state as { cursor?: unknown }).cursor).success) {
+      throw new Error("awareness cursor is malformed");
+    }
+    clients.push({ clientId, clock, state: state as Record<string, unknown> | null });
   }
   if (decoding.hasContent(decoder)) {
     throw new Error("trailing bytes");
@@ -118,5 +149,17 @@ export function encodeAwareness(update: Uint8Array): Uint8Array {
   const encoder = encoding.createEncoder();
   encoding.writeVarUint(encoder, MESSAGE_AWARENESS);
   encoding.writeVarUint8Array(encoder, update);
+  return encoding.toUint8Array(encoder);
+}
+
+/** Encodes awareness entries as an awareness update, the inverse of what `parseSyncMessage` reads. */
+export function encodeAwarenessEntries(entries: AwarenessEntry[]): Uint8Array {
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, entries.length);
+  for (const { clientId, clock, state } of entries) {
+    encoding.writeVarUint(encoder, clientId);
+    encoding.writeVarUint(encoder, clock);
+    encoding.writeVarString(encoder, JSON.stringify(state));
+  }
   return encoding.toUint8Array(encoder);
 }
