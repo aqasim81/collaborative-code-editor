@@ -6,7 +6,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 4 complete — WS server (`apps/ws-server`) with room-ticket auth on upgrade: the web action `getRoomTicket` issues 5-minute HS256 tickets after a membership check, and `WS_TICKET_SECRET` is shared by both apps (ADR 0001 addendum). Room lifecycle with grace-period cleanup, Zod-validated and rate-limited messages, `/health`, graceful shutdown. Local DB: `docker compose up -d` (port 5434); dev seed creates `/room/seed-room`. Next: Phase 5 (Yjs sync, #8).
+Phase 5 complete — the room editor is bound to a shared Yjs document synced through the WS server, which speaks the y-websocket protocol on `y-protocols`, validates every frame and stores each update in LevelDB (`WS_PERSISTENCE_DIR`) before broadcasting it (ADR 0002). Room tickets (ADR 0001 addendum) are refreshed before a reconnect. Local DB: `docker compose up -d` (port 5434); dev seed creates `/room/seed-room`. Next: Phase 6 (presence and cursors, #9).
 
 ## Stack
 

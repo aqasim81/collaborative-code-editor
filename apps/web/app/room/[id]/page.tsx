@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { RoomEditor } from "@/components/editor/room-editor";
 import { auth } from "@/lib/auth";
 import { toSessionUser } from "@/lib/auth.config";
+import { env } from "@/lib/env";
 import { toLanguageId } from "@/lib/languages";
 import { findRoomForMember } from "@/lib/rooms";
 import { SIGN_IN_PATH } from "@/lib/routes";
@@ -31,7 +32,12 @@ export default async function RoomPage({ params }: RoomPageProps) {
   // The navbar is 3.5rem tall plus a 1px bottom border.
   return (
     <main className="h-[calc(100dvh-3.5rem-1px)]">
-      <RoomEditor roomName={room.name} initialLanguage={toLanguageId(room.language)} />
+      <RoomEditor
+        roomId={room.id}
+        roomName={room.name}
+        initialLanguage={toLanguageId(room.language)}
+        serverUrl={env.NEXT_PUBLIC_WS_URL}
+      />
     </main>
   );
 }

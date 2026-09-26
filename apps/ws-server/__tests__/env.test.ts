@@ -10,6 +10,7 @@ describe("parseEnv", () => {
       data: {
         WS_SERVER_PORT: 8080,
         WS_TICKET_SECRET: secret,
+        WS_PERSISTENCE_DIR: ".leveldb",
         ROOM_GRACE_PERIOD_MS: 30_000,
         LOG_LEVEL: "info",
         NODE_ENV: "development",

@@ -4,6 +4,7 @@ import type { Result } from "../src/result";
 import { startServer } from "../src/server";
 import { silentLogger } from "./helpers/logger";
 import { expectUpgradeRejected, waitFor } from "./helpers/sockets";
+import { createMemoryStore } from "./helpers/stores";
 import { TEST_SECRET } from "./helpers/tickets";
 
 // Hold the ticket check open so shutdown can start while it is in flight.
@@ -32,6 +33,7 @@ describe("shutdown during a ticket check (Invariant 1)", () => {
       ticketSecret: TEST_SECRET,
       roomGracePeriodMs: 0,
       logger: silentLogger,
+      store: createMemoryStore(),
     });
     if (!started.success) {
       throw new Error(started.error);

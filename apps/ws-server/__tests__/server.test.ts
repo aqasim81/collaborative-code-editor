@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type RunningServer, type ServerOptions, startServer } from "../src/server";
 import { silentLogger } from "./helpers/logger";
 import { closed, expectUpgradeRejected, nextMessage, openClient, waitFor } from "./helpers/sockets";
+import { createMemoryStore } from "./helpers/stores";
 import { signTicket, TEST_SECRET } from "./helpers/tickets";
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -37,6 +38,7 @@ async function start(overrides: Partial<ServerOptions> = {}): Promise<RunningSer
     ticketSecret: TEST_SECRET,
     roomGracePeriodMs: 30_000,
     logger: silentLogger,
+    store: createMemoryStore(),
     ...overrides,
   });
   if (!result.success) {
@@ -148,13 +150,12 @@ describe("ws server", () => {
       ws.close();
     });
 
-    it("rejects binary frames for now", async () => {
+    it("closes a connection that sends a malformed sync frame with 1003", async () => {
       const ws = await openClient(await roomUrl());
-      const reply = nextMessage(ws);
-      ws.send(Buffer.from([1, 2, 3]));
+      const done = closed(ws);
+      ws.send(Buffer.from([9, 9, 9]));
 
-      expect(await reply).toMatchObject({ type: "error" });
-      ws.close();
+      expect(await done).toEqual({ code: 1003, reason: "invalid sync message" });
     });
 
     it("closes a flooding client with 1008", async () => {
@@ -171,6 +172,21 @@ describe("ws server", () => {
       expect(await done).toEqual({ code: 1008, reason: "rate limit exceeded" });
       await waitFor(() => server.stats().connections === 0);
     });
+  });
+
+  it("rate-limits binary sync frames too (Invariant 1)", async () => {
+    await server.close();
+    server = await start({ rateLimit: { capacity: 5, refillPerSecond: 1 } });
+    base = `ws://127.0.0.1:${server.port}`;
+    const ws = await openClient(await roomUrl());
+    const done = closed(ws);
+
+    // A valid, empty sync update (message type 0, sync type 2, empty Yjs update).
+    for (let i = 0; i < 20; i++) {
+      ws.send(Buffer.from([0, 2, 2, 0, 0]));
+    }
+
+    expect(await done).toEqual({ code: 1008, reason: "rate limit exceeded" });
   });
 
   describe("http", () => {
@@ -236,6 +252,7 @@ describe("ws server", () => {
       ticketSecret: TEST_SECRET,
       roomGracePeriodMs: 0,
       logger: silentLogger,
+      store: createMemoryStore(),
     });
 
     expect(result.success).toBe(false);

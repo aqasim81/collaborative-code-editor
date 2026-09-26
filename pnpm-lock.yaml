@@ -29,6 +29,12 @@ importers:
       '@auth/prisma-adapter':
         specifier: ^2.0.0
         version: 2.11.1(@prisma/client@6.19.2(prisma@6.19.2(typescript@5.9.3))(typescript@5.9.3))
+      '@codemirror/autocomplete':
+        specifier: ^6.20.1
+        version: 6.20.1
+      '@codemirror/commands':
+        specifier: ^6.11.1
+        version: 6.11.1
       '@codemirror/lang-cpp':
         specifier: ^6.0.0
         version: 6.0.3
@@ -57,8 +63,11 @@ importers:
         specifier: ^6.0.0
         version: 6.0.2
       '@codemirror/language':
-        specifier: ^6.10.0
+        specifier: ^6.12.2
         version: 6.12.2
+      '@codemirror/search':
+        specifier: ^6.7.2
+        version: 6.7.2
       '@codemirror/state':
         specifier: ^6.5.4
         version: 6.7.6
@@ -80,9 +89,6 @@ importers:
       clsx:
         specifier: ^2.1.0
         version: 2.1.1
-      codemirror:
-        specifier: ^6.0.1
-        version: 6.0.2
       jose:
         specifier: ^6.0.0
         version: 6.1.3
@@ -110,6 +116,9 @@ importers:
       y-codemirror.next:
         specifier: ^0.3.0
         version: 0.3.5(@codemirror/state@6.7.6)(@codemirror/view@6.39.16)(yjs@13.6.29)
+      y-protocols:
+        specifier: ^1.0.6
+        version: 1.0.7(yjs@13.6.29)
       y-websocket:
         specifier: ^2.1.0
         version: 2.1.0(yjs@13.6.29)
@@ -162,6 +171,12 @@ importers:
       jose:
         specifier: ^6.0.0
         version: 6.1.3
+      level:
+        specifier: ^6.0.1
+        version: 6.0.1
+      lib0:
+        specifier: ^0.2.117
+        version: 0.2.117
       pino:
         specifier: ^9.6.0
         version: 9.14.0
@@ -171,9 +186,9 @@ importers:
       y-leveldb:
         specifier: ^0.1.0
         version: 0.1.2(yjs@13.6.29)
-      y-websocket:
-        specifier: ^2.1.0
-        version: 2.1.0(yjs@13.6.29)
+      y-protocols:
+        specifier: ^1.0.6
+        version: 1.0.7(yjs@13.6.29)
       yjs:
         specifier: ^13.6.0
         version: 13.6.29
@@ -199,6 +214,9 @@ importers:
       vitest:
         specifier: ^4.0.0
         version: 4.0.18(@types/node@25.3.3)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.2)
+      y-websocket:
+        specifier: ^2.1.0
+        version: 2.1.0(yjs@13.6.29)
 
   packages/shared:
     devDependencies:
@@ -1444,9 +1462,6 @@ packages:
   clsx@2.1.1:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
-
-  codemirror@6.0.2:
-    resolution: {integrity: sha512-VhydHotNW5w1UGK0Qj96BwSk/Zqbp9WbnyK2W/eVMv4QyF41INRGpjUhFJY7/uDNuudSc33a/PKr4iDqRduvHw==}
 
   color-convert@2.0.1:
     resolution: {integrity: sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==}
@@ -3894,16 +3909,6 @@ snapshots:
       wrap-ansi: 7.0.0
 
   clsx@2.1.1: {}
-
-  codemirror@6.0.2:
-    dependencies:
-      '@codemirror/autocomplete': 6.20.1
-      '@codemirror/commands': 6.11.1
-      '@codemirror/language': 6.12.2
-      '@codemirror/lint': 6.9.5
-      '@codemirror/search': 6.7.2
-      '@codemirror/state': 6.7.6
-      '@codemirror/view': 6.39.16
 
   color-convert@2.0.1:
     dependencies:

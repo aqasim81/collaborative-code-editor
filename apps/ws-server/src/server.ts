@@ -6,9 +6,17 @@ import { WebSocket, WebSocketServer } from "ws";
 import { verifyRoomTicket } from "./auth/ticket";
 import { parseClientMessage } from "./handlers/messages";
 import type { Logger } from "./logger";
+import type { DocumentStore } from "./persistence/document-store";
 import { createRateLimiter, DEFAULT_RATE_LIMIT, type RateLimitOptions } from "./rate-limit";
 import type { Result } from "./result";
 import { createRoomManager, type RoomManager } from "./rooms/room-manager";
+import { parseSyncMessage } from "./sync/protocol";
+import {
+  createSyncRoom,
+  INVALID_MESSAGE_CLOSE_CODE,
+  type Peer,
+  type SyncRoom,
+} from "./sync/sync-room";
 
 export interface ServerOptions {
   port: number;
@@ -16,6 +24,8 @@ export interface ServerOptions {
   ticketSecret: string;
   roomGracePeriodMs: number;
   logger: Logger;
+  /** Where room documents are persisted. The server owns it from here on and closes it on shutdown. */
+  store: DocumentStore;
   rateLimit?: RateLimitOptions;
   maxPayloadBytes?: number;
   /** How long shutdown waits for a client's close handshake before terminating it. */
@@ -30,15 +40,19 @@ export interface HealthStats {
 
 export interface RunningServer {
   port: number;
-  rooms: RoomManager<WebSocket>;
+  rooms: RoomManager<Peer, SyncRoom>;
   stats(): HealthStats;
-  /** Graceful shutdown: closes every connection (1001), clears rooms, stops listening. */
+  /**
+   * Graceful shutdown: closes every connection (1001), waits for every room's pending writes, closes the
+   * document store and stops listening.
+   */
   close(): Promise<void>;
 }
 
 // Room ids are cuids today; allow the URL-safe alphabet and nothing that needs decoding.
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-const DEFAULT_MAX_PAYLOAD_BYTES = 1024 * 1024;
+// A 10K-line document can exceed 1 MiB in a single sync step; a frame over the limit drops the connection.
+const DEFAULT_MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
 
 /** Parses a request target; null for one a client malformed on purpose (e.g. `http://[`). */
@@ -73,12 +87,15 @@ function send(ws: WebSocket, message: ServerMessage): void {
 }
 
 export async function startServer(options: ServerOptions): Promise<Result<RunningServer>> {
-  const { logger, ticketSecret } = options;
+  const { logger, ticketSecret, store } = options;
   const rateLimit = options.rateLimit ?? DEFAULT_RATE_LIMIT;
   const shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
-  const rooms = createRoomManager<WebSocket>({
+  const rooms: RoomManager<Peer, SyncRoom> = createRoomManager<Peer, SyncRoom>({
     gracePeriodMs: options.roomGracePeriodMs,
     logger,
+    createState: (roomId, previous) =>
+      createSyncRoom({ roomId, store, logger, previous, onFailure: () => rooms.evict(roomId) }),
+    destroyState: (room) => room.destroy(),
   });
   const wss = new WebSocketServer({
     noServer: true,
@@ -101,7 +118,17 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
   function onConnection(ws: WebSocket, claims: RoomTicketClaims): void {
     const { roomId, sub: userId } = claims;
     const log = logger.child({ roomId, userId });
-    rooms.join(roomId, ws);
+    const peer: Peer = {
+      send(data) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(data);
+        }
+      },
+      close: (code, reason) => ws.close(code, reason),
+    };
+    // Keep this instance: if the room is evicted, a later one with the same id is a different room.
+    const room = rooms.join(roomId, peer);
+    room.state.addPeer(peer);
     log.info("client joined");
 
     const limiter = createRateLimiter(rateLimit);
@@ -112,7 +139,17 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
         return;
       }
       // binaryType is the default "nodebuffer", so every frame arrives as a Buffer.
-      const message = parseClientMessage(data as Buffer, isBinary);
+      if (isBinary) {
+        const sync = parseSyncMessage(data as Buffer);
+        if (!sync.success) {
+          log.debug({ reason: sync.error }, "sync message rejected");
+          ws.close(INVALID_MESSAGE_CLOSE_CODE, "invalid sync message");
+          return;
+        }
+        room.state.handle(peer, sync.data);
+        return;
+      }
+      const message = parseClientMessage(data as Buffer);
       if (!message.success) {
         log.debug({ reason: message.error }, "message rejected");
         send(ws, { type: "error", message: message.error });
@@ -124,7 +161,8 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     });
     ws.on("error", (error) => log.warn({ err: error }, "socket error"));
     ws.on("close", () => {
-      rooms.leave(roomId, ws);
+      room.state.removePeer(peer);
+      rooms.leave(roomId, peer);
       log.info("client left");
     });
   }
@@ -174,7 +212,8 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
   async function close(): Promise<void> {
     closing = true;
     await Promise.all([...wss.clients].map(closeClient));
-    rooms.clear();
+    await rooms.clear();
+    await store.close();
     wss.close();
     await new Promise<void>((resolve) => {
       httpServer.close(() => resolve());

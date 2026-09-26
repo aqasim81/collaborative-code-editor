@@ -17,8 +17,15 @@ vi.mock("@/lib/auth", () => ({ auth }));
 vi.mock("@/lib/rooms", () => ({ findRoomForMember }));
 vi.mock("next/navigation", () => ({ notFound, redirect }));
 vi.mock("@/components/editor/room-editor", () => ({
-  RoomEditor: ({ roomName, initialLanguage }: { roomName: string; initialLanguage: string }) => (
-    <div data-testid="room-editor">{`${roomName}:${initialLanguage}`}</div>
+  RoomEditor: (props: {
+    roomId: string;
+    roomName: string;
+    initialLanguage: string;
+    serverUrl: string;
+  }) => (
+    <div data-testid="room-editor">
+      {`${props.roomId}:${props.roomName}:${props.initialLanguage}:${props.serverUrl}`}
+    </div>
   ),
 }));
 
@@ -54,7 +61,9 @@ describe("room page (Invariant 2)", () => {
 
     render(await RoomPage({ params }));
 
-    expect(screen.getByTestId("room-editor")).toHaveTextContent("Pairing:javascript");
+    expect(screen.getByTestId("room-editor")).toHaveTextContent(
+      "r1:Pairing:javascript:ws://localhost:8080",
+    );
     expect(notFound).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import { parseEnv } from "./env";
 import { createLogger } from "./logger";
+import { openLevelDbStore } from "./persistence/document-store";
 import type { Result } from "./result";
 import { type RunningServer, startServer } from "./server";
 
@@ -19,17 +20,27 @@ export async function main(
   }
   const logger = createLogger(env.data.LOG_LEVEL);
 
+  const store = await openLevelDbStore(env.data.WS_PERSISTENCE_DIR);
+  if (!store.success) {
+    return store;
+  }
+
   const started = await startServer({
     port: env.data.WS_SERVER_PORT,
     ticketSecret: env.data.WS_TICKET_SECRET,
     roomGracePeriodMs: env.data.ROOM_GRACE_PERIOD_MS,
     logger,
+    store: store.data,
   });
   if (!started.success) {
+    await store.data.close();
     return started;
   }
   const server = started.data;
-  logger.info({ port: server.port }, "ws server listening");
+  logger.info(
+    { port: server.port, persistenceDir: env.data.WS_PERSISTENCE_DIR },
+    "ws server listening",
+  );
 
   let stopping = false;
   const shutdown = (signal: string): void => {

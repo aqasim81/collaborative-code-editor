@@ -1,16 +1,31 @@
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/main";
 import { closed, openClient, waitFor } from "./helpers/sockets";
+import { tempDir } from "./helpers/stores";
 import { signTicket, TEST_SECRET } from "./helpers/tickets";
 
 class FakeProcess extends EventEmitter {
   exit = vi.fn();
 }
 
-const validEnv = { WS_TICKET_SECRET: TEST_SECRET, WS_SERVER_PORT: "0", LOG_LEVEL: "silent" };
+let dir: ReturnType<typeof tempDir>;
+let validEnv: Record<string, string>;
 
 describe("main", () => {
+  beforeEach(() => {
+    dir = tempDir();
+    validEnv = {
+      WS_TICKET_SECRET: TEST_SECRET,
+      WS_SERVER_PORT: "0",
+      LOG_LEVEL: "silent",
+      WS_PERSISTENCE_DIR: dir.path,
+    };
+  });
+  afterEach(() => {
+    dir.remove();
+  });
+
   it("refuses to start with an invalid environment", async () => {
     const result = await main({ WS_SERVER_PORT: "0" }, new FakeProcess());
 
@@ -47,12 +62,32 @@ describe("main", () => {
     if (!first.success) {
       throw new Error(first.error);
     }
+    const other = tempDir();
     const second = await main(
-      { ...validEnv, WS_SERVER_PORT: String(first.data.port) },
+      { ...validEnv, WS_SERVER_PORT: String(first.data.port), WS_PERSISTENCE_DIR: other.path },
       new FakeProcess(),
     );
 
     expect(second.success).toBe(false);
+    if (!second.success) {
+      expect(second.error).toContain("could not listen");
+    }
+    await first.data.close();
+    other.remove();
+  });
+
+  it("refuses to start when the document store is locked by another process", async () => {
+    const first = await main(validEnv, new FakeProcess());
+    if (!first.success) {
+      throw new Error(first.error);
+    }
+
+    const second = await main(validEnv, new FakeProcess());
+
+    expect(second.success).toBe(false);
+    if (!second.success) {
+      expect(second.error).toContain("could not open");
+    }
     await first.data.close();
   });
 });

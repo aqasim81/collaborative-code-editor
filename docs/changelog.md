@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Phase 5 — Real-Time Collaboration (#8)
+- The room editor is bound to the room's shared Yjs text with y-codemirror.next; undo and redo use `Y.UndoManager`, so a user only undoes their own edits
+- `RoomProvider` creates the Yjs document and a `WebsocketProvider` per room; a room ticket is fetched before connecting and refreshed before a reconnect when it is about to expire; a refused ticket is shown in the room
+- WS server speaks the y-websocket protocol on `y-protocols` (ADR 0002): binary frames validated whole before use (bad frame → 1003), sync step 1/2 and incremental updates, awareness relay
+- LevelDB persistence (`WS_PERSISTENCE_DIR`, default `.leveldb`): every update is stored before it is broadcast or sent in a sync reply; rooms are restored after a restart; a storage failure closes the room with 1011 (Invariant 4)
+- Awareness is kept in memory only and cleared when its connection closes (Invariant 5)
+- Frame cap raised to 8 MiB for large documents; shutdown waits for pending writes and closes the store
+- Tests: CRDT convergence, persist-before-broadcast, restart restore, reconnect convergence, 10K-line sync, awareness cleanup, ticket refresh
+- Replaced the `codemirror` meta package with the individual CodeMirror packages; `y-websocket` is a test-only dependency of the WS server
+
 ### Phase 4 — WebSocket Server & Room Architecture (#7)
 - HTTP + WebSocket server (`ws`) on `WS_SERVER_PORT` (default 8080); refuses to start with an invalid environment (Zod)
 - Connections use `/<roomId>?ticket=<jwt>`; a missing, forged, expired, over-long or wrong-room ticket is rejected with 401 before the socket opens (Invariants 1 and 2)

@@ -4,8 +4,22 @@ import { silentLogger } from "../helpers/logger";
 
 const GRACE_MS = 30_000;
 
-function manager() {
-  return createRoomManager<string>({ gracePeriodMs: GRACE_MS, logger: silentLogger });
+interface State {
+  roomId: string;
+  previous: Promise<void>;
+  destroyed: boolean;
+}
+
+function manager(destroyState: (state: State) => Promise<void> = async () => undefined) {
+  return createRoomManager<string, State>({
+    gracePeriodMs: GRACE_MS,
+    logger: silentLogger,
+    createState: (roomId, previous) => ({ roomId, previous, destroyed: false }),
+    destroyState: async (state) => {
+      await destroyState(state);
+      state.destroyed = true;
+    },
+  });
 }
 
 describe("room manager", () => {
@@ -72,14 +86,58 @@ describe("room manager", () => {
     expect(rooms.connectionCount()).toBe(1);
   });
 
-  it("clear() drops every room and pending destroy", () => {
+  it("creates one state per room and destroys it with the room", async () => {
     const rooms = manager();
+    const state = rooms.join("r1", "a").state;
+    expect(rooms.join("r1", "b").state).toBe(state);
+    expect(state.roomId).toBe("r1");
+
+    rooms.leave("r1", "a");
+    rooms.leave("r1", "b");
+    vi.advanceTimersByTime(GRACE_MS);
+    await vi.waitFor(() => expect(state.destroyed).toBe(true));
+  });
+
+  it("evict() destroys a room at once and the next join starts a fresh one", () => {
+    const rooms = manager();
+    const first = rooms.join("r1", "a").state;
+    rooms.evict("r1");
+    rooms.evict("unknown");
+
+    expect(rooms.get("r1")).toBeUndefined();
+    const second = rooms.join("r1", "a").state;
+    expect(second).not.toBe(first);
+  });
+
+  it("makes a new instance wait until the previous one is destroyed", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const rooms = manager(() => held);
     rooms.join("r1", "a");
+    rooms.evict("r1");
+    const next = rooms.join("r1", "b").state;
+    let settled = false;
+    void next.previous.then(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release();
+    await vi.waitFor(() => expect(settled).toBe(true));
+  });
+
+  it("clear() drops every room and pending destroy and waits for every state", async () => {
+    const rooms = manager();
+    const r1 = rooms.join("r1", "a").state;
     rooms.join("r2", "b");
     rooms.leave("r2", "b");
 
-    rooms.clear();
+    await rooms.clear();
     expect(rooms.roomCount()).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
+    expect(r1.destroyed).toBe(true);
   });
 });

@@ -6,14 +6,8 @@ const clientMessageSchema: z.ZodType<ClientMessage> = z.discriminatedUnion("type
   z.object({ type: z.literal("ping") }).strict(),
 ]);
 
-/**
- * Validates an inbound frame (Invariant 1). Binary frames are reserved for Yjs sync (Phase 5) and are
- * rejected until then.
- */
-export function parseClientMessage(data: Buffer, isBinary: boolean): Result<ClientMessage> {
-  if (isBinary) {
-    return { success: false, error: "binary messages are not supported yet" };
-  }
+/** Validates an inbound text frame (Invariant 1). Binary frames carry Yjs sync; see `sync/protocol.ts`. */
+export function parseClientMessage(data: Buffer): Result<ClientMessage> {
   let json: unknown;
   try {
     json = JSON.parse(data.toString("utf8"));

@@ -25,9 +25,17 @@ export function openClient(url: string): Promise<WebSocket> {
   });
 }
 
+/** The next JSON text message; binary Yjs sync frames are skipped. */
 export function nextMessage(ws: WebSocket): Promise<ServerMessage> {
   return new Promise((resolve) => {
-    ws.once("message", (data) => resolve(JSON.parse(String(data)) as ServerMessage));
+    const onMessage = (data: Buffer, isBinary: boolean) => {
+      if (isBinary) {
+        return;
+      }
+      ws.off("message", onMessage);
+      resolve(JSON.parse(String(data)) as ServerMessage);
+    };
+    ws.on("message", onMessage);
   });
 }
 
