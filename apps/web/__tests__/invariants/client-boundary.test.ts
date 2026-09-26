@@ -1,10 +1,13 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { join, posix, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // Invariant 6: secrets stay out of the client. Every module that ends up in the client bundle must not
 // be a server-only module. A module is client code when it has "use client" or when client code imports
 // it, directly or transitively, so the check walks the import graph from each "use client" entry point.
+// Package imports are not followed; each one reached from client code is checked against a denylist of
+// server-only packages and Node builtins instead.
 // Paths are relative to the web app root, with forward slashes.
 const SERVER_ONLY_MODULES = new Set([
   "lib/env.ts",
@@ -14,6 +17,15 @@ const SERVER_ONLY_MODULES = new Set([
   "lib/rooms.ts",
   "lib/ws-ticket.ts",
 ]);
+// Server-only packages, matched as the specifier itself or any subpath of it.
+const SERVER_ONLY_PACKAGES = [
+  "@prisma/client",
+  "@auth/prisma-adapter",
+  "jose",
+  "next-auth/providers",
+  "next/headers",
+];
+const NODE_BUILTINS = new Set(builtinModules);
 const APP_ROOT = join(__dirname, "..", "..");
 // Skipped when reading the app from disk: dependencies, build output, tests, and (at the root only)
 // the Prisma schema and seed.
@@ -69,6 +81,16 @@ function importSpecifiers(source: string): string[] {
   );
 }
 
+function isServerOnlyPackage(specifier: string): boolean {
+  return (
+    // The bare "next-auth" is the server entry; "next-auth/react" is client code.
+    specifier === "next-auth" ||
+    SERVER_ONLY_PACKAGES.some((name) => specifier === name || specifier.startsWith(`${name}/`)) ||
+    specifier.startsWith("node:") ||
+    NODE_BUILTINS.has(specifier)
+  );
+}
+
 // Resolves "./x", "../x" and "@/x" (with or without a .js/.jsx extension) to a file in the app.
 // Returns null for package imports and assets, undefined for a local specifier that does not resolve.
 function resolveSpecifier(
@@ -121,6 +143,8 @@ function walkClientGraph(files: SourceFiles): { reached: Set<string>; violations
         const target = resolveSpecifier(current, specifier, files);
         if (target === undefined) {
           violations.push(`${chain.join(" -> ")} -> unresolved "${specifier}"`);
+        } else if (target === null && isServerOnlyPackage(specifier)) {
+          violations.push(`${chain.join(" -> ")} -> package "${specifier}"`);
         } else if (target !== null && !visited.has(target)) {
           visited.add(target);
           queue.push([...chain, target]);
@@ -240,6 +264,53 @@ describe("client boundary (Invariant 6)", () => {
       'components/a.tsx -> unresolved "./missing"',
       "components/a.tsx -> components/helper.ts",
     ]);
+  });
+
+  it("flags a server-only package imported by a client component", () => {
+    const files = new Map([
+      ["components/a.tsx", '"use client";\nimport { PrismaClient } from "@prisma/client";\n'],
+      [
+        "components/b.tsx",
+        '"use client";\nimport { PrismaAdapter } from "@auth/prisma-adapter";\nimport NextAuth from "next-auth";\n',
+      ],
+      ["components/c.tsx", '"use client";\nimport GitHub from "next-auth/providers/github";\n'],
+    ]);
+
+    expect(findViolations(files)).toEqual([
+      'components/a.tsx -> package "@prisma/client"',
+      'components/b.tsx -> package "@auth/prisma-adapter"',
+      'components/b.tsx -> package "next-auth"',
+      'components/c.tsx -> package "next-auth/providers/github"',
+    ]);
+  });
+
+  it("flags a server-only package reached transitively and Node builtins", () => {
+    const files = new Map([
+      ["components/a.tsx", '"use client";\nimport { sign } from "@/lib/helper";\n'],
+      ["lib/helper.ts", 'import { SignJWT } from "jose";\nexport const sign = SignJWT;\n'],
+      [
+        "components/b.tsx",
+        '"use client";\nimport { randomBytes } from "node:crypto";\nimport { createHash } from "crypto";\nimport { readFile } from "fs/promises";\n',
+      ],
+    ]);
+
+    expect(findViolations(files)).toEqual([
+      'components/a.tsx -> lib/helper.ts -> package "jose"',
+      'components/b.tsx -> package "node:crypto"',
+      'components/b.tsx -> package "crypto"',
+      'components/b.tsx -> package "fs/promises"',
+    ]);
+  });
+
+  it("allows client packages and type-only imports of server-only packages", () => {
+    const files = new Map([
+      [
+        "components/a.tsx",
+        '"use client";\nimport { useSession } from "next-auth/react";\nimport type { Room } from "@prisma/client";\nimport { useRouter } from "next/navigation";\nimport * as Y from "yjs";\nimport { z } from "zod";\n',
+      ],
+    ]);
+
+    expect(findViolations(files)).toEqual([]);
   });
 
   it("no module reachable from a client component in the app is server-only", () => {

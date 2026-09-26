@@ -10,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 6 (presence and cursors, #9) complete (follow-ups #28 and #27 done). Next: Phase 7 (room management and polish, #10). History, blockers and local setup: `docs/status.md`.
+Phase 6 (presence and cursors, #9) complete (follow-ups #28, #27 and #24 done). Next: Phase 7 (room management and polish, #10). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 

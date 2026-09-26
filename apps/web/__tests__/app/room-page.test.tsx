@@ -1,8 +1,15 @@
 import { render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { RoomEditor } from "@/components/editor/room-editor";
+import { findServerValues } from "../helpers/client-props";
 
-const { auth, findRoomForMember, notFound, redirect } = vi.hoisted(() => ({
+type RoomEditorProps = ComponentProps<typeof RoomEditor>;
+
+const { auth, findRoomForMember, notFound, redirect, roomEditorProps } = vi.hoisted(() => ({
   auth: vi.fn(),
+  // Records the props the Server Component hands across the client boundary.
+  roomEditorProps: vi.fn(),
   findRoomForMember: vi.fn(),
   // Next's helpers throw to stop rendering; mirror that so the page stops too.
   notFound: vi.fn(() => {
@@ -17,17 +24,14 @@ vi.mock("@/lib/auth", () => ({ auth }));
 vi.mock("@/lib/rooms", () => ({ findRoomForMember }));
 vi.mock("next/navigation", () => ({ notFound, redirect }));
 vi.mock("@/components/editor/room-editor", () => ({
-  RoomEditor: (props: {
-    roomId: string;
-    roomName: string;
-    initialLanguage: string;
-    user: { id: string; name: string; image: string | null };
-    serverUrl: string;
-  }) => (
-    <div data-testid="room-editor">
-      {`${props.roomId}:${props.roomName}:${props.initialLanguage}:${props.serverUrl}:${JSON.stringify(props.user)}`}
-    </div>
-  ),
+  RoomEditor: (props: RoomEditorProps) => {
+    roomEditorProps(props);
+    return (
+      <div data-testid="room-editor">
+        {`${props.roomId}:${props.roomName}:${props.initialLanguage}:${props.serverUrl}:${JSON.stringify(props.user)}`}
+      </div>
+    );
+  },
 }));
 
 import RoomPage from "@/app/room/[id]/page";
@@ -67,5 +71,24 @@ describe("room page (Invariant 2)", () => {
       'r1:Pairing:javascript:ws://localhost:8080:{"id":"u1","name":"Ada","image":"https://a.test/u1"}',
     );
     expect(notFound).not.toHaveBeenCalled();
+  });
+
+  it("passes the client editor only public values (Invariant 6)", async () => {
+    auth.mockResolvedValueOnce({
+      user: { id: "u1", name: "Ada", image: null, email: "ada@example.test" },
+    });
+    findRoomForMember.mockResolvedValueOnce({ id: "r1", name: "Pairing", language: "python" });
+
+    render(await RoomPage({ params }));
+
+    // Exact match: an extra prop, or an extra session field such as email, fails the test.
+    expect(roomEditorProps).toHaveBeenCalledWith({
+      roomId: "r1",
+      roomName: "Pairing",
+      initialLanguage: "python",
+      serverUrl: "ws://localhost:8080",
+      user: { id: "u1", name: "Ada", image: null },
+    });
+    expect(findServerValues(roomEditorProps.mock.calls[0]?.[0])).toEqual([]);
   });
 });

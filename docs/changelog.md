@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Client-boundary check covers packages and server-to-client props (#24)
+- The Invariant 6 import-graph walk now flags server-only packages reached from client code: `@prisma/client`, `@auth/prisma-adapter`, `jose`, `next-auth/providers/*`, `next/headers`, the bare `next-auth` server entry and Node builtins (`node:*`, `crypto`, `fs/promises`, ...); `next-auth/react` and type-only imports stay allowed
+- New test helper `__tests__/helpers/client-props.ts` finds non-public env values anywhere in a client component's props; the room page test asserts `RoomEditor` gets exactly its five props, a `user` of `id`, `name`, `image`, and no server value
+- Tests only; no production code changed. Checked by adding a Prisma import to the toolbar and a ticket secret to the editor's props: both fail the suite
+
 ### Ticket fetch retry (#27)
 - A room ticket fetch that throws (network drop, redeploy, database briefly down) is retried with jittered backoff, 1 s doubling to 30 s, until it succeeds or the room is left; before, the room stayed down until reload after a blip at the 5-minute ticket refresh, and local edits stopped syncing
 - A refused ticket (not signed in, not a member, bad room id) is still reported in the room and never retried

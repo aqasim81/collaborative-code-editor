@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current Phase
-Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence before broadcast. Follow-ups done: #16/#21 (the client-boundary test walks the import graph), #22 (per-connection byte budget), #18 (sockets close at ticket expiry) and #19 (ticket in `Sec-WebSocket-Protocol`, per-IP upgrade limit). Phase 6 (#9): remote cursors with name labels, selections, a presence list and a connection indicator, on server-owned presence identity (#32) and a ping heartbeat (#33); presence is dropped as soon as the server starts closing a connection (#28). A ticket fetch that fails transiently is retried with backoff (#27). Next: Phase 7 (room management and polish, #10).
+Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence before broadcast. Follow-ups done: #16/#21 (the client-boundary test walks the import graph), #22 (per-connection byte budget), #18 (sockets close at ticket expiry) and #19 (ticket in `Sec-WebSocket-Protocol`, per-IP upgrade limit). Phase 6 (#9): remote cursors with name labels, selections, a presence list and a connection indicator, on server-owned presence identity (#32) and a ping heartbeat (#33); presence is dropped as soon as the server starts closing a connection (#28). A ticket fetch that fails transiently is retried with backoff (#27). The client-boundary test also covers server-only packages and server-to-client props (#24). Next: Phase 7 (room management and polish, #10).
 
 ## Accomplishments
 - [x] Project spec refined and validated
@@ -17,7 +17,7 @@ Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence
 - [x] WS connections have a byte budget (16 MiB burst, 1 MiB/s) alongside the message budget; a byte flood is closed with 1008, a 10K-line first sync is not (#22)
 - [x] Sockets close with 4001 when their room ticket expires; the client fetches a fresh ticket and reconnects without losing edits, so a removed member loses access within 5 minutes (#18)
 - [x] The room ticket travels in `Sec-WebSocket-Protocol` and is never echoed or put in the URL; upgrade attempts are limited per IP (429 before any ticket check) (#19). Two tabs checked in a browser: both connect to `/seed-room` with no query string and edits sync both ways
-- [x] Client-boundary invariant test follows relative, directive-less and transitive imports from every client component (#16, #21)
+- [x] Client-boundary invariant test follows relative, directive-less and transitive imports from every client component (#16, #21), flags server-only packages and Node builtins in client code, and guards the room page's props to the editor (#24)
 - [x] Phase 6: remote carets and selections in each user's colour, name labels for 3 s after a caret moves, a presence sidebar (one entry per user, avatar or initials), and a Connecting/Connected/Reconnecting/Disconnected indicator; colours derive from the user id (#9). Checked in a browser with two windows, including a WS server outage and recovery
 - [x] Presence is the ticket's identity; a connection owns one presence, which is cleared on every disconnect, reconnects included; a same-clock null for someone else's presence is refused (#32)
 - [x] Dead WS connections are found by a 30 s ping and terminated (#33)
@@ -50,4 +50,4 @@ pnpm --filter @collab-editor/ws-server rebuild leveldown
 
 ## Next Steps
 1. Add `WS_TICKET_SECRET` (32+ characters, e.g. `openssl rand -hex 32`) to `apps/web/.env` if it is not there yet; local `pnpm dev` and `pnpm build` need it
-2. `./scripts/issue-loop.sh` (or `/next-issue` for one issue) — works the open issues in `plans/issues/README.md` order, #24 next; Phase 7 (#10) is #35 → #38
+2. `./scripts/issue-loop.sh` (or `/next-issue` for one issue) — works the open issues in `plans/issues/README.md` order, #30 next; Phase 7 (#10) is #35 → #38
