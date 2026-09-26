@@ -49,4 +49,4 @@ pnpm --filter @collab-editor/ws-server rebuild leveldown
 
 ## Next Steps
 1. Add `WS_TICKET_SECRET` (32+ characters, e.g. `openssl rand -hex 32`) to `apps/web/.env` if it is not there yet; local `pnpm dev` and `pnpm build` need it
-2. `implement #10` — Phase 7: room management and polish
+2. `./scripts/issue-loop.sh` (or `/next-issue` for one issue) — works the open issues in `plans/issues/README.md` order, #27 first; Phase 7 (#10) is #35 → #38

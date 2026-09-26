@@ -55,3 +55,6 @@ docs/showcase/
 
 # Browser automation output
 .playwright-mcp/
+
+# Issue autopilot session logs
+logs/

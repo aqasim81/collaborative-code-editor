@@ -91,6 +91,7 @@ make verify                 # wraps pnpm validate: lint + type-check + test:cove
 # Build / tooling
 pnpm build                  # Build all apps (ws-server bundles with tsup)
 make doctor                 # checks node, pnpm, jq, git, lefthook, gitleaks
+./scripts/issue-loop.sh     # works plans/issues/README.md in order: /next-issue per issue, fresh session each
 lefthook install            # once after cloning
 pnpm --filter @collab-editor/ws-server rebuild leveldown   # if the native build was skipped (macOS arm64)
 ```
