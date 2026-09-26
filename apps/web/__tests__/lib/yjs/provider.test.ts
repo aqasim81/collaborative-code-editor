@@ -9,8 +9,12 @@ import * as Y from "yjs";
 import type { RoomTicketResult } from "@/actions/room-ticket";
 import {
   type ConnectionStatus,
+  type ConnectRoomOptions,
   connectRoom,
   type RoomConnection,
+  TICKET_RETRY_BASE_MS,
+  TICKET_RETRY_MAX_MS,
+  ticketRetryDelayMs,
   toConnectionStatus,
 } from "@/lib/yjs/provider";
 
@@ -115,6 +119,18 @@ function syncStep2Update(frame: unknown): Uint8Array | null {
   return bytes.slice(index, index + length);
 }
 
+/** Plays the server's sync step 1 on a socket and returns the text the client's step 2 reply carries. */
+function serverTextAfterSync(ws: FakeWebSocket): string {
+  ws.serverSend(EMPTY_SYNC_STEP_1);
+  const update = ws.sent.map(syncStep2Update).find((u) => u !== null);
+  if (!update) {
+    throw new Error("no sync step 2 reply");
+  }
+  const server = new Y.Doc();
+  Y.applyUpdate(server, update);
+  return server.getText("codemirror").toString();
+}
+
 const NOW = 1_000;
 const ok = (ticket: string, expiresAt: number): RoomTicketResult => ({
   success: true,
@@ -125,7 +141,7 @@ let connection: RoomConnection | null = null;
 
 function connect(
   fetchTicket: (roomId: string) => Promise<RoomTicketResult>,
-  extra: { onStatus?: (s: ConnectionStatus) => void; onError?: (m: string) => void } = {},
+  extra: Pick<ConnectRoomOptions, "onStatus" | "onError" | "retryDelayMs"> = {},
 ): RoomConnection {
   connection = connectRoom({
     serverUrl: "ws://ws.test/",
@@ -261,11 +277,16 @@ describe("connectRoom", () => {
     ]);
   });
 
-  it("reports a refused ticket and never opens a socket", async () => {
+  it("reports a refused ticket, never retries it and never opens a socket", async () => {
     const onError = vi.fn();
-    connect(async () => ({ success: false, error: "Room not found" }), { onError });
+    const fetchTicket = vi.fn(
+      async (): Promise<RoomTicketResult> => ({ success: false, error: "Room not found" }),
+    );
+    connect(fetchTicket, { onError, retryDelayMs: () => 0 });
 
     await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Room not found"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fetchTicket).toHaveBeenCalledOnce();
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
@@ -327,28 +348,135 @@ describe("connectRoom", () => {
 
     socket(1).serverOpen();
     // The server asks for everything it lacks; the reply must carry the edit made while disconnected.
-    socket(1).serverSend(EMPTY_SYNC_STEP_1);
-    const update = socket(1)
-      .sent.map(syncStep2Update)
-      .find((u) => u !== null);
-    if (!update) {
-      throw new Error("no sync step 2 reply");
-    }
-    const server = new Y.Doc();
-    Y.applyUpdate(server, update);
-    expect(server.getText("codemirror").toString()).toBe("kept");
+    expect(serverTextAfterSync(socket(1))).toBe("kept");
   });
 
-  it("reports a ticket fetch that throws instead of failing silently", async () => {
+  it("retries a ticket fetch that throws, then connects (#27)", async () => {
     const onError = vi.fn();
-    connect(
-      async () => {
-        throw new Error("network down");
-      },
-      { onError },
+    const fetchTicket = vi
+      .fn<(roomId: string) => Promise<RoomTicketResult>>()
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValueOnce(ok("t2", NOW + 300));
+    connect(fetchTicket, { onError, retryDelayMs: () => 0 });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(socket(0).protocols).toEqual(roomTicketProtocols("t2"));
+    expect(fetchTicket).toHaveBeenCalledTimes(2);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("retries when the refresh after a ticket-expired close throws, and resyncs edits (#27)", async () => {
+    const onError = vi.fn();
+    const fetchTicket = vi
+      .fn<(roomId: string) => Promise<RoomTicketResult>>()
+      .mockResolvedValueOnce(ok("t1", NOW + 300))
+      .mockRejectedValueOnce(new Error("redeploy"))
+      .mockResolvedValueOnce(ok("t2", NOW + 600));
+    const room = connect(fetchTicket, { onError, retryDelayMs: () => 0 });
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    socket(0).serverOpen();
+
+    socket(0).serverClose(TICKET_EXPIRED_CLOSE_CODE);
+    room.text.insert(0, "kept");
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+    expect(socket(1).protocols).toEqual(roomTicketProtocols("t2"));
+    expect(fetchTicket).toHaveBeenCalledTimes(3);
+    expect(onError).not.toHaveBeenCalled();
+
+    socket(1).serverOpen();
+    expect(serverTextAfterSync(socket(1))).toBe("kept");
+  });
+
+  it("backs off, reports disconnected after repeated failures, then connects once a retry succeeds (#27)", async () => {
+    const statuses: ConnectionStatus[] = [];
+    const onError = vi.fn();
+    const retryDelayMs = vi.fn((_attempt: number) => 0);
+    const fetchTicket = vi
+      .fn<(roomId: string) => Promise<RoomTicketResult>>()
+      .mockRejectedValueOnce(new Error("down"))
+      .mockRejectedValueOnce(new Error("down"))
+      .mockRejectedValueOnce(new Error("down"))
+      .mockResolvedValueOnce(ok("t1", NOW + 300));
+    connect(fetchTicket, { onStatus: (s) => statuses.push(s), onError, retryDelayMs });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(retryDelayMs.mock.calls.map(([attempt]) => attempt)).toEqual([1, 2, 3]);
+    expect(statuses.slice(0, 3)).toEqual(["connecting", "connecting", "disconnected"]);
+    socket(0).serverOpen();
+    expect(statuses.at(-1)).toBe("connected");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("reports reconnecting while a refresh after a connection keeps failing (#27)", async () => {
+    const statuses: ConnectionStatus[] = [];
+    const fetchTicket = vi
+      .fn<(roomId: string) => Promise<RoomTicketResult>>()
+      .mockResolvedValueOnce(ok("t1", NOW + 300))
+      .mockRejectedValue(new Error("down"));
+    connect(fetchTicket, { onStatus: (s) => statuses.push(s), retryDelayMs: () => 0 });
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    socket(0).serverOpen();
+    statuses.length = 0;
+
+    socket(0).serverClose(TICKET_EXPIRED_CLOSE_CODE);
+
+    await vi.waitFor(() => expect(statuses).toContain("disconnected"));
+    expect(statuses.filter((s) => s !== "disconnected").every((s) => s === "reconnecting")).toBe(
+      true,
+    );
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it("stops at a refusal that follows a failed fetch (#27)", async () => {
+    const onError = vi.fn();
+    const fetchTicket = vi
+      .fn<(roomId: string) => Promise<RoomTicketResult>>()
+      .mockRejectedValueOnce(new Error("down"))
+      .mockResolvedValue({ success: false, error: "Room not found" });
+    connect(fetchTicket, { onError, retryDelayMs: () => 0 });
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Room not found"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(onError).toHaveBeenCalledOnce();
+    expect(fetchTicket).toHaveBeenCalledTimes(2);
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  it("stops retrying on destroy (#27)", async () => {
+    const fetchTicket = vi.fn(async (): Promise<RoomTicketResult> => {
+      throw new Error("down");
+    });
+    const room = connect(fetchTicket, { retryDelayMs: () => 20 });
+    await vi.waitFor(() => expect(fetchTicket).toHaveBeenCalledOnce());
+    // Let the rejection land so the retry is scheduled.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    room.destroy();
+    connection = null;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(fetchTicket).toHaveBeenCalledOnce();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  it("ignores a fetch that throws after destroy (#27)", async () => {
+    const retryDelayMs = vi.fn(() => 0);
+    let rejectTicket: (error: Error) => void = () => undefined;
+    const room = connect(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectTicket = reject;
+        }),
+      { retryDelayMs },
     );
 
-    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Could not get a room ticket"));
+    room.destroy();
+    connection = null;
+    rejectTicket(new Error("down"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(retryDelayMs).not.toHaveBeenCalled();
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
@@ -414,5 +542,27 @@ describe("toConnectionStatus", () => {
     ["connected", true, 5, "connected"],
   ] as const)("%s, ever connected %s, %i failures → %s", (socket, everConnected, failures, expected) => {
     expect(toConnectionStatus(socket, everConnected, failures)).toBe(expected);
+  });
+});
+
+describe("ticketRetryDelayMs", () => {
+  it.each([
+    [1, 1_000],
+    [2, 2_000],
+    [3, 4_000],
+    [5, 16_000],
+    [6, 30_000],
+    [50, 30_000],
+  ])("attempt %i waits up to %i ms", (attempt, full) => {
+    expect(ticketRetryDelayMs(attempt, () => 1)).toBe(full);
+    expect(ticketRetryDelayMs(attempt, () => 0)).toBe(full / 2);
+  });
+
+  it("stays between half the base delay and the cap", () => {
+    for (let attempt = 1; attempt <= 100; attempt++) {
+      const delay = ticketRetryDelayMs(attempt);
+      expect(delay).toBeGreaterThanOrEqual(TICKET_RETRY_BASE_MS / 2);
+      expect(delay).toBeLessThanOrEqual(TICKET_RETRY_MAX_MS);
+    }
   });
 });

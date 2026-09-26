@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current Phase
-Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence before broadcast. Follow-ups done: #16/#21 (the client-boundary test walks the import graph), #22 (per-connection byte budget), #18 (sockets close at ticket expiry) and #19 (ticket in `Sec-WebSocket-Protocol`, per-IP upgrade limit). Phase 6 (#9): remote cursors with name labels, selections, a presence list and a connection indicator, on server-owned presence identity (#32) and a ping heartbeat (#33); presence is dropped as soon as the server starts closing a connection (#28). Next: Phase 7 (room management and polish, #10).
+Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence before broadcast. Follow-ups done: #16/#21 (the client-boundary test walks the import graph), #22 (per-connection byte budget), #18 (sockets close at ticket expiry) and #19 (ticket in `Sec-WebSocket-Protocol`, per-IP upgrade limit). Phase 6 (#9): remote cursors with name labels, selections, a presence list and a connection indicator, on server-owned presence identity (#32) and a ping heartbeat (#33); presence is dropped as soon as the server starts closing a connection (#28). A ticket fetch that fails transiently is retried with backoff (#27). Next: Phase 7 (room management and polish, #10).
 
 ## Accomplishments
 - [x] Project spec refined and validated
@@ -22,6 +22,7 @@ Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence
 - [x] Presence is the ticket's identity; a connection owns one presence, which is cleared on every disconnect, reconnects included; a same-clock null for someone else's presence is refused (#32)
 - [x] Dead WS connections are found by a 30 s ping and terminated (#33)
 - [x] Every server-initiated close drops the peer's presence at once, and a client that never answers it is terminated after 5 s (#28)
+- [x] A ticket fetch that throws is retried with backoff (1 s doubling to 30 s, jittered); a refusal is shown and never retried (#27)
 - [x] Phase 4: WS server (`ws` + pino) with HS256 room tickets issued by the web app after a membership check (ADR 0001 addendum), room manager with grace-period cleanup, Zod-validated and rate-limited messages, `GET /health`, graceful shutdown (#7). `/health` and the 401 on a ticketless upgrade checked against the dev server
 
 ## Blockers
@@ -49,4 +50,4 @@ pnpm --filter @collab-editor/ws-server rebuild leveldown
 
 ## Next Steps
 1. Add `WS_TICKET_SECRET` (32+ characters, e.g. `openssl rand -hex 32`) to `apps/web/.env` if it is not there yet; local `pnpm dev` and `pnpm build` need it
-2. `./scripts/issue-loop.sh` (or `/next-issue` for one issue) — works the open issues in `plans/issues/README.md` order, #27 first; Phase 7 (#10) is #35 → #38
+2. `./scripts/issue-loop.sh` (or `/next-issue` for one issue) — works the open issues in `plans/issues/README.md` order, #24 next; Phase 7 (#10) is #35 → #38

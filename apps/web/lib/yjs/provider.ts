@@ -39,6 +39,19 @@ export function toConnectionStatus(
 /** A ticket this close to expiry is replaced before the next connection attempt. */
 export const TICKET_REFRESH_MARGIN_SECONDS = 30;
 
+/** Backoff for a ticket fetch that throws: 1 s, doubling, capped at 30 s. */
+export const TICKET_RETRY_BASE_MS = 1_000;
+export const TICKET_RETRY_MAX_MS = 30_000;
+
+/**
+ * Delay before retry number `attempt` (1, 2, 3…). Equal jitter keeps half the backoff and randomises the
+ * rest, so tabs that lost the server together don't all come back in the same second.
+ */
+export function ticketRetryDelayMs(attempt: number, random: () => number = Math.random): number {
+  const backoff = Math.min(TICKET_RETRY_MAX_MS, TICKET_RETRY_BASE_MS * 2 ** (attempt - 1));
+  return backoff * (0.5 + random() / 2);
+}
+
 export interface ConnectRoomOptions {
   serverUrl: string;
   roomId: string;
@@ -46,10 +59,12 @@ export interface ConnectRoomOptions {
   user: SessionUser;
   fetchTicket: (roomId: string) => Promise<RoomTicketResult>;
   onStatus?: (status: ConnectionStatus) => void;
-  /** Called when no ticket can be obtained; the connection then stays down. */
+  /** Called when the ticket is refused; the connection then stays down. */
   onError?: (message: string) => void;
   /** Unix seconds; injectable for tests. */
   now?: () => number;
+  /** Wait before retrying a ticket fetch that threw; injectable for tests. */
+  retryDelayMs?: (attempt: number) => number;
   WebSocketPolyfill?: typeof WebSocket;
 }
 
@@ -67,6 +82,8 @@ export interface RoomConnection {
  * (Invariant 1), so a fresh one is fetched before the first connection, after the server closes a
  * socket because its ticket expired, and before any other reconnect that would present a ticket about
  * to expire. The Y.Doc outlives every socket, so edits made in between resync on the next connection.
+ * A ticket fetch that throws (network drop, redeploy, database down) is retried with backoff until it
+ * succeeds or the room is left; a refused ticket is reported through `onError` and never retried.
  */
 export function connectRoom({
   serverUrl,
@@ -76,6 +93,7 @@ export function connectRoom({
   onStatus,
   onError,
   now = () => Math.floor(Date.now() / 1000),
+  retryDelayMs = ticketRetryDelayMs,
   WebSocketPolyfill,
 }: ConnectRoomOptions): RoomConnection {
   const doc = new Y.Doc();
@@ -89,22 +107,31 @@ export function connectRoom({
   let expiresAt = 0;
   let destroyed = false;
   let everConnected = false;
+  let ticketFailures = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
   async function connectWithFreshTicket(): Promise<void> {
-    let result: RoomTicketResult;
+    // null: the fetch threw. A server action throws in the browser only for transient trouble (network
+    // drop, redeploy, database down); refusals come back as `success: false`.
+    let result: RoomTicketResult | null = null;
     try {
       result = await fetchTicket(roomId);
-    } catch {
-      // A server action can throw in the browser (network drop, redeploy); report it rather than stall.
-      result = { success: false, error: "Could not get a room ticket" };
-    }
+    } catch {}
     if (destroyed) {
+      return;
+    }
+    if (result === null) {
+      // No socket exists meanwhile, so nothing else refetches.
+      ticketFailures += 1;
+      onStatus?.(toConnectionStatus("disconnected", everConnected, ticketFailures));
+      retryTimer = setTimeout(() => void connectWithFreshTicket(), retryDelayMs(ticketFailures));
       return;
     }
     if (!result.success) {
       onError?.(result.error);
       return;
     }
+    ticketFailures = 0;
     expiresAt = result.data.expiresAt;
     // The ticket goes in Sec-WebSocket-Protocol, never the URL (proxies log URLs); y-websocket passes
     // `protocols` to every socket it opens, including its own reconnects.
@@ -168,6 +195,7 @@ export function connectRoom({
     awareness: provider.awareness,
     destroy() {
       destroyed = true;
+      clearTimeout(retryTimer);
       provider.destroy();
       doc.destroy();
     },

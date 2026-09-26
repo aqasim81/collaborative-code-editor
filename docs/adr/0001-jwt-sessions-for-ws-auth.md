@@ -65,6 +65,8 @@ connection indefinitely.
   client refreshes on `4001` regardless of the expiry it saw, so skew cannot cause a stale-ticket loop.
 - Pushing revocations (immediate removal) would need a web-app → WS-server channel; it can be revisited
   if a 5-minute window becomes too long.
+- A ticket fetch that throws (a transient failure) is retried with backoff; only a refusal keeps the
+  connection down, so a removed member is still never retried into the room (#27).
 
 ## Addendum (2026-09-26, #19): the ticket travels in `Sec-WebSocket-Protocol`; upgrades are rate-limited
 

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Ticket fetch retry (#27)
+- A room ticket fetch that throws (network drop, redeploy, database briefly down) is retried with jittered backoff, 1 s doubling to 30 s, until it succeeds or the room is left; before, the room stayed down until reload after a blip at the 5-minute ticket refresh, and local edits stopped syncing
+- A refused ticket (not signed in, not a member, bad room id) is still reported in the room and never retried
+- The status shows Connecting or Reconnecting while retrying and Disconnected after 3 failures in a row; a transient failure no longer shows "Could not join this room"
+- Tests: retry on first connect and after a `4001` refresh (an offline edit resyncs), backoff attempts, the status sequence, no retry of refusals, no retry after destroy, delay doubling, cap and jitter bounds
+
 ### Presence cleared when the server closes a connection (#28)
 - Every close the WS server starts (1003 invalid frame, 1008 rate or byte limit, 4001 ticket expired, 1011 storage failure, 4002 presence id taken) drops the peer's presence at once, instead of when the client answers the close frame; a client that never answered stayed visible to everyone for `ws`'s 30 s close timeout
 - A client that ignores the close handshake is terminated after 5 s, as on shutdown; `shutdownTimeoutMs` is now `closeTimeoutMs` and covers both
