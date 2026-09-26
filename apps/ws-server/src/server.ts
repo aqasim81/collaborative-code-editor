@@ -2,10 +2,12 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 import {
+  ROOM_PROTOCOL,
   ROOM_TICKET_TTL_SECONDS,
   type RoomTicketClaims,
   type ServerMessage,
   TICKET_EXPIRED_CLOSE_CODE,
+  TICKET_PROTOCOL_PREFIX,
 } from "@collab-editor/shared";
 import { WebSocket, WebSocketServer } from "ws";
 import { verifyRoomTicket } from "./auth/ticket";
@@ -13,11 +15,15 @@ import { parseClientMessage } from "./handlers/messages";
 import type { Logger } from "./logger";
 import type { DocumentStore } from "./persistence/document-store";
 import {
+  createKeyedRateLimiter,
   createRateLimiter,
   DEFAULT_BYTE_RATE_LIMIT,
   DEFAULT_MAX_PAYLOAD_BYTES,
   DEFAULT_RATE_LIMIT,
+  DEFAULT_UPGRADE_RATE_LIMIT,
+  DEFAULT_UPGRADE_RATE_LIMIT_MAX_KEYS,
   type RateLimitOptions,
+  upgradeRateLimitKey,
 } from "./rate-limit";
 import type { Result } from "./result";
 import { createRoomManager, type RoomManager } from "./rooms/room-manager";
@@ -42,6 +48,8 @@ export interface ServerOptions {
   /** Inbound bytes per connection; its capacity should be at least `maxPayloadBytes`. */
   byteRateLimit?: RateLimitOptions;
   maxPayloadBytes?: number;
+  /** Upgrade attempts per remote IP, checked before any ticket work. */
+  upgradeRateLimit?: RateLimitOptions;
   /** How long shutdown waits for a client's close handshake before terminating it. */
   shutdownTimeoutMs?: number;
 }
@@ -73,23 +81,31 @@ function parseRequestUrl(url: string | undefined): URL | null {
   return URL.canParse(target, "http://localhost") ? new URL(target, "http://localhost") : null;
 }
 
-/** Parses `/<roomId>?ticket=<jwt>`, the URL shape y-websocket's provider produces. */
-function parseUpgradeUrl(url: string | undefined): { roomId: string; ticket: string } | null {
-  const parsed = parseRequestUrl(url);
-  if (!parsed) {
+/**
+ * Reads the room id from the path (`/<roomId>`) and the ticket from `Sec-WebSocket-Protocol`, which must
+ * offer the room protocol and exactly one `ticket.<jwt>`. The query string is ignored: a ticket there
+ * would end up in proxy logs.
+ */
+function parseUpgrade(req: IncomingMessage): { roomId: string; ticket: string } | null {
+  const roomId = parseRequestUrl(req.url)?.pathname.slice(1);
+  if (roomId === undefined || !ROOM_ID_PATTERN.test(roomId)) {
     return null;
   }
-  const roomId = parsed.pathname.slice(1);
-  const ticket = parsed.searchParams.get("ticket");
-  if (!ROOM_ID_PATTERN.test(roomId) || !ticket) {
+  const offered = (req.headers["sec-websocket-protocol"] ?? "").split(",").map((p) => p.trim());
+  const tickets = offered.filter((p) => p.startsWith(TICKET_PROTOCOL_PREFIX));
+  const ticket = tickets[0]?.slice(TICKET_PROTOCOL_PREFIX.length);
+  if (!offered.includes(ROOM_PROTOCOL) || tickets.length !== 1 || !ticket) {
     return null;
   }
   return { roomId, ticket };
 }
 
-function rejectUpgrade(socket: Duplex, status: 401 | 503): void {
-  const reason = status === 401 ? "Unauthorized" : "Service Unavailable";
-  socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+const STATUS_TEXT = { 401: "Unauthorized", 429: "Too Many Requests", 503: "Service Unavailable" };
+
+function rejectUpgrade(socket: Duplex, status: keyof typeof STATUS_TEXT): void {
+  socket.end(
+    `HTTP/1.1 ${status} ${STATUS_TEXT[status]}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
+  );
 }
 
 function send(ws: WebSocket, message: ServerMessage): void {
@@ -118,9 +134,15 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
       createSyncRoom({ roomId, store, logger, previous, onFailure: () => rooms.evict(roomId) }),
     destroyState: (room) => room.destroy(),
   });
+  const upgradeLimiter = createKeyedRateLimiter(
+    options.upgradeRateLimit ?? DEFAULT_UPGRADE_RATE_LIMIT,
+    DEFAULT_UPGRADE_RATE_LIMIT_MAX_KEYS,
+  );
   const wss = new WebSocketServer({
     noServer: true,
     maxPayload,
+    // Select the room protocol only; the default would echo the first offered one, possibly the ticket.
+    handleProtocols: () => ROOM_PROTOCOL,
   });
   let closing = false;
 
@@ -218,7 +240,14 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
       rejectUpgrade(socket, 503);
       return;
     }
-    const target = parseUpgradeUrl(req.url);
+    // Before any parsing or HMAC work. The socket's own address: X-Forwarded-For is client-controlled.
+    const ip = upgradeRateLimitKey(req.socket.remoteAddress);
+    if (!upgradeLimiter.tryConsume(ip)) {
+      logger.info({ ip }, "upgrade rejected: rate limit exceeded");
+      rejectUpgrade(socket, 429);
+      return;
+    }
+    const target = parseUpgrade(req);
     if (!target) {
       logger.info("upgrade rejected: missing ticket or malformed room id");
       rejectUpgrade(socket, 401);

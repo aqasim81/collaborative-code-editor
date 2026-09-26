@@ -2,9 +2,9 @@ import type { ServerMessage } from "@collab-editor/shared";
 import { WebSocket } from "ws";
 
 /** Resolves with the HTTP status when the server refuses the upgrade; rejects if it opens. */
-export function expectUpgradeRejected(url: string): Promise<number> {
+export function expectUpgradeRejected(url: string, protocols: string[] = []): Promise<number> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(url, protocols);
     ws.on("unexpected-response", (req, res) => {
       req.destroy();
       resolve(res.statusCode ?? 0);
@@ -17,9 +17,10 @@ export function expectUpgradeRejected(url: string): Promise<number> {
   });
 }
 
-export function openClient(url: string): Promise<WebSocket> {
+/** Opens a socket offering `protocols` (e.g. `roomTicketProtocols(ticket)`). */
+export function openClient(url: string, protocols: string[] = []): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(url, protocols);
     ws.once("open", () => resolve(ws));
     ws.once("error", reject);
   });

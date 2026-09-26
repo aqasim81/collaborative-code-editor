@@ -1,3 +1,4 @@
+import { roomTicketProtocols } from "@collab-editor/shared";
 import { WebSocket } from "ws";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
@@ -21,7 +22,7 @@ export async function connectYClient(
   doc = new Y.Doc(),
 ): Promise<YClient> {
   const provider = new WebsocketProvider(`ws://127.0.0.1:${port}`, roomId, doc, {
-    params: { ticket: await signTicket({ roomId }) },
+    protocols: roomTicketProtocols(await signTicket({ roomId })),
     WebSocketPolyfill: WebSocket as unknown as typeof globalThis.WebSocket,
     disableBc: true,
   });

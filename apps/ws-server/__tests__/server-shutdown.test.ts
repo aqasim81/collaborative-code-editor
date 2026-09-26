@@ -1,4 +1,4 @@
-import type { RoomTicketClaims } from "@collab-editor/shared";
+import { type RoomTicketClaims, roomTicketProtocols } from "@collab-editor/shared";
 import { describe, expect, it, vi } from "vitest";
 import type { Result } from "../src/result";
 import { startServer } from "../src/server";
@@ -40,7 +40,10 @@ describe("shutdown during a ticket check (Invariant 1)", () => {
     }
     const server = started.data;
 
-    const rejected = expectUpgradeRejected(`ws://127.0.0.1:${server.port}/room-1?ticket=t`);
+    const rejected = expectUpgradeRejected(
+      `ws://127.0.0.1:${server.port}/room-1`,
+      roomTicketProtocols("t"),
+    );
     await waitFor(() => pending.length === 1);
     const closing = server.close();
     pending[0]?.({ success: true, data: claims });

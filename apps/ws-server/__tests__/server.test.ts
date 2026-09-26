@@ -1,8 +1,14 @@
 import { randomBytes } from "node:crypto";
 import { connect, createServer } from "node:net";
-import { TICKET_EXPIRED_CLOSE_CODE } from "@collab-editor/shared";
+import {
+  ROOM_PROTOCOL,
+  roomTicketProtocols,
+  TICKET_EXPIRED_CLOSE_CODE,
+} from "@collab-editor/shared";
 import * as encoding from "lib0/encoding";
+import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WebSocket } from "ws";
 import * as Y from "yjs";
 import { type RunningServer, type ServerOptions, startServer } from "../src/server";
 import { silentLogger } from "./helpers/logger";
@@ -26,6 +32,28 @@ function rawRequest(port: number, upgrade: boolean): Promise<string> {
       data += chunk.toString();
       socket.destroy();
       resolve(data);
+    });
+    socket.on("close", () => resolve(data));
+  });
+}
+
+/** Sends a WebSocket upgrade by hand; resolves with the raw response head. */
+function rawUpgrade(port: number, path: string, protocols: string): Promise<string> {
+  return new Promise((resolve) => {
+    const socket = connect(port, "127.0.0.1", () => {
+      socket.write(
+        `GET ${path} HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
+          `Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${randomBytes(16).toString("base64")}\r\n` +
+          `Sec-WebSocket-Protocol: ${protocols}\r\n\r\n`,
+      );
+    });
+    let data = "";
+    socket.on("data", (chunk) => {
+      data += chunk.toString();
+      if (data.includes("\r\n\r\n")) {
+        socket.destroy();
+        resolve(data);
+      }
     });
     socket.on("close", () => resolve(data));
   });
@@ -61,8 +89,12 @@ async function start(overrides: Partial<ServerOptions> = {}): Promise<RunningSer
   return result.data;
 }
 
-async function roomUrl(roomId = "room-1", ticketRoom = roomId): Promise<string> {
-  return `${base}/${roomId}?ticket=${await signTicket({ roomId: ticketRoom })}`;
+/** Opens a socket to `roomId` with a valid ticket for `ticketRoom` in the subprotocol header. */
+async function openRoom(roomId = "room-1", ticketRoom = roomId): Promise<WebSocket> {
+  return openClient(
+    `${base}/${roomId}`,
+    roomTicketProtocols(await signTicket({ roomId: ticketRoom })),
+  );
 }
 
 describe("ws server", () => {
@@ -75,27 +107,103 @@ describe("ws server", () => {
   });
 
   describe("upgrade authentication (Invariants 1 and 2)", () => {
+    const rejectTicket = (ticket: string, roomId = "room-1") =>
+      expectUpgradeRejected(`${base}/${roomId}`, roomTicketProtocols(ticket));
+
+    it("joins with a ticket in the subprotocol header and selects only the room protocol", async () => {
+      const ticket = await signTicket();
+      const ws = await openClient(`${base}/room-1`, roomTicketProtocols(ticket));
+
+      expect(ws.protocol).toBe(ROOM_PROTOCOL);
+      await waitFor(() => server.rooms.get("room-1")?.clients.size === 1);
+      ws.close();
+    });
+
+    it("never echoes the ticket in the handshake response", async () => {
+      const ticket = await signTicket();
+      const response = await rawUpgrade(
+        server.port,
+        "/room-1",
+        roomTicketProtocols(ticket).join(", "),
+      );
+
+      expect(response).toMatch(/^HTTP\/1\.1 101/);
+      expect(response).toMatch(new RegExp(`^Sec-WebSocket-Protocol: ${ROOM_PROTOCOL}\r$`, "im"));
+      expect(response).not.toContain(ticket);
+    });
+
+    it("never logs the ticket, accepted or rejected", async () => {
+      await server.close();
+      const lines: string[] = [];
+      server = await start({
+        logger: pino({ level: "trace" }, { write: (line: string) => lines.push(line) }),
+      });
+      base = `ws://127.0.0.1:${server.port}`;
+      const ticket = await signTicket();
+      const otherRoom = await signTicket({ roomId: "room-2" });
+
+      const ws = await openClient(`${base}/room-1`, roomTicketProtocols(ticket));
+      await rejectTicket(otherRoom);
+      await expectUpgradeRejected(`${base}/room-1?ticket=${ticket}`);
+      ws.close();
+      await waitFor(() => server.stats().connections === 0);
+
+      expect(lines.length).toBeGreaterThan(0);
+      const logged = lines.join("");
+      expect(logged).not.toContain(ticket);
+      expect(logged).not.toContain(otherRoom);
+    });
+
     it("rejects a connection without a ticket with 401", async () => {
       expect(await expectUpgradeRejected(`${base}/room-1`)).toBe(401);
+      expect(await expectUpgradeRejected(`${base}/room-1`, [ROOM_PROTOCOL])).toBe(401);
+    });
+
+    it("rejects a ticket without the room protocol with 401", async () => {
+      const ticket = await signTicket();
+      expect(await expectUpgradeRejected(`${base}/room-1`, [`ticket.${ticket}`])).toBe(401);
+    });
+
+    it("rejects more than one ticket with 401", async () => {
+      const ticket = await signTicket();
+      const other = await signTicket({ sub: "user-2" });
+      expect(
+        await expectUpgradeRejected(`${base}/room-1`, [
+          ...roomTicketProtocols(ticket),
+          `ticket.${other}`,
+        ]),
+      ).toBe(401);
+    });
+
+    it("ignores a ticket in the query string (401)", async () => {
+      const ticket = await signTicket();
+      expect(await expectUpgradeRejected(`${base}/room-1?ticket=${ticket}`)).toBe(401);
+      expect(await expectUpgradeRejected(`${base}/room-1?ticket=${ticket}`, [ROOM_PROTOCOL])).toBe(
+        401,
+      );
     });
 
     it("rejects a ticket for another room with 401", async () => {
-      expect(await expectUpgradeRejected(await roomUrl("room-2", "room-1"))).toBe(401);
+      expect(await rejectTicket(await signTicket({ roomId: "room-1" }), "room-2")).toBe(401);
     });
 
     it("rejects an expired ticket with 401", async () => {
-      const ticket = await signTicket({ iat: now() - 400, exp: now() - 100 });
-      expect(await expectUpgradeRejected(`${base}/room-1?ticket=${ticket}`)).toBe(401);
+      expect(await rejectTicket(await signTicket({ iat: now() - 400, exp: now() - 100 }))).toBe(
+        401,
+      );
     });
 
     it("rejects a forged ticket with 401", async () => {
-      const ticket = await signTicket({ secret: "f".repeat(32) });
-      expect(await expectUpgradeRejected(`${base}/room-1?ticket=${ticket}`)).toBe(401);
+      expect(await rejectTicket(await signTicket({ secret: "f".repeat(32) }))).toBe(401);
+    });
+
+    it("rejects an invalid ticket with 401", async () => {
+      expect(await rejectTicket("not-a-jwt")).toBe(401);
     });
 
     it("rejects a malformed room id with 401", async () => {
       const ticket = await signTicket({ roomId: "../x" });
-      expect(await expectUpgradeRejected(`${base}/..%2Fx?ticket=${ticket}`)).toBe(401);
+      expect(await rejectTicket(ticket, "..%2Fx")).toBe(401);
     });
 
     it("survives a malformed request target", async () => {
@@ -115,7 +223,7 @@ describe("ws server", () => {
 
   describe("rooms", () => {
     it("joins the room with a valid ticket", async () => {
-      const ws = await openClient(await roomUrl());
+      const ws = await openRoom();
 
       await waitFor(() => server.rooms.get("room-1")?.clients.size === 1);
       expect(server.stats()).toEqual({ status: "ok", rooms: 1, connections: 1 });
@@ -123,8 +231,8 @@ describe("ws server", () => {
     });
 
     it("tracks two clients in the same room", async () => {
-      const a = await openClient(await roomUrl());
-      const b = await openClient(await roomUrl());
+      const a = await openRoom();
+      const b = await openRoom();
 
       await waitFor(() => server.rooms.get("room-1")?.clients.size === 2);
       expect(server.stats().rooms).toBe(1);
@@ -133,8 +241,8 @@ describe("ws server", () => {
     });
 
     it("removes a client on disconnect", async () => {
-      const a = await openClient(await roomUrl());
-      const b = await openClient(await roomUrl());
+      const a = await openRoom();
+      const b = await openRoom();
       await waitFor(() => server.stats().connections === 2);
 
       a.close();
@@ -146,7 +254,7 @@ describe("ws server", () => {
 
   describe("messages (Invariant 1)", () => {
     it("answers a valid ping", async () => {
-      const ws = await openClient(await roomUrl());
+      const ws = await openRoom();
       const reply = nextMessage(ws);
       ws.send(JSON.stringify({ type: "ping" }));
 
@@ -155,7 +263,7 @@ describe("ws server", () => {
     });
 
     it("rejects an invalid message", async () => {
-      const ws = await openClient(await roomUrl());
+      const ws = await openRoom();
       const reply = nextMessage(ws);
       ws.send(JSON.stringify({ type: "delete-everything" }));
 
@@ -165,7 +273,7 @@ describe("ws server", () => {
     });
 
     it("closes a connection that sends a malformed sync frame with 1003", async () => {
-      const ws = await openClient(await roomUrl());
+      const ws = await openRoom();
       const done = closed(ws);
       ws.send(Buffer.from([9, 9, 9]));
 
@@ -176,7 +284,7 @@ describe("ws server", () => {
       await server.close();
       server = await start({ rateLimit: { capacity: 5, refillPerSecond: 1 } });
       base = `ws://127.0.0.1:${server.port}`;
-      const ws = await openClient(await roomUrl());
+      const ws = await openRoom();
       const done = closed(ws);
 
       for (let i = 0; i < 20; i++) {
@@ -192,7 +300,7 @@ describe("ws server", () => {
     await server.close();
     server = await start({ rateLimit: { capacity: 5, refillPerSecond: 1 } });
     base = `ws://127.0.0.1:${server.port}`;
-    const ws = await openClient(await roomUrl());
+    const ws = await openRoom();
     const done = closed(ws);
 
     // A valid, empty sync update (message type 0, sync type 2, empty Yjs update).
@@ -204,7 +312,7 @@ describe("ws server", () => {
   });
 
   it("closes a client that floods bytes with 1008 under the default budget (Invariant 1)", async () => {
-    const ws = await openClient(await roomUrl());
+    const ws = await openRoom();
     const done = closed(ws);
     const frame = syncUpdateFrame(1024 * 1024);
 
@@ -224,7 +332,7 @@ describe("ws server", () => {
       byteRateLimit: { capacity: 2_000, refillPerSecond: 1 },
     });
     base = `ws://127.0.0.1:${server.port}`;
-    const ws = await openClient(await roomUrl());
+    const ws = await openRoom();
     const done = closed(ws);
 
     ws.send(syncUpdateFrame(1_500, "a")); // accepted, ~500 bytes left
@@ -269,7 +377,7 @@ describe("ws server", () => {
 
     it("closes a socket with 4001 when its ticket expires", async () => {
       const ticket = await signTicket({ exp: now() + 60 });
-      const ws = await openClient(`${base}/room-1?ticket=${ticket}`);
+      const ws = await openClient(`${base}/room-1`, roomTicketProtocols(ticket));
       await waitFor(() => server.stats().connections === 1);
       const done = closed(ws);
 
@@ -280,7 +388,7 @@ describe("ws server", () => {
     });
 
     it("keeps a socket open while its ticket is valid", async () => {
-      const ws = await openClient(await roomUrl());
+      const ws = await openRoom();
       await waitFor(() => server.stats().connections === 1);
 
       vi.advanceTimersByTime(200_000);
@@ -294,7 +402,7 @@ describe("ws server", () => {
 
     it("closes a ticket that expires moments after the upgrade at its exp", async () => {
       const ticket = await signTicket({ exp: now() + 1 });
-      const ws = await openClient(`${base}/room-1?ticket=${ticket}`);
+      const ws = await openClient(`${base}/room-1`, roomTicketProtocols(ticket));
       const done = closed(ws);
 
       vi.advanceTimersByTime(1_000);
@@ -305,7 +413,7 @@ describe("ws server", () => {
     it("closes a socket within one ticket lifetime even if the issuer's clock runs ahead", async () => {
       // Issued by a clock 100 s ahead: exp is 400 s away on this server's clock.
       const ticket = await signTicket({ iat: now() + 100, exp: now() + 400 });
-      const ws = await openClient(`${base}/room-1?ticket=${ticket}`);
+      const ws = await openClient(`${base}/room-1`, roomTicketProtocols(ticket));
       await waitFor(() => server.stats().connections === 1);
       const done = closed(ws);
 
@@ -315,7 +423,7 @@ describe("ws server", () => {
     });
 
     it("clears the expiry timer on a normal disconnect", async () => {
-      const ws = await openClient(await roomUrl());
+      const ws = await openRoom();
       await waitFor(() => server.stats().connections === 1);
       const done = closed(ws);
       ws.close();
@@ -332,7 +440,7 @@ describe("ws server", () => {
 
   describe("http", () => {
     it("reports health", async () => {
-      const ws = await openClient(await roomUrl());
+      const ws = await openRoom();
       await waitFor(() => server.stats().connections === 1);
 
       const res = await fetch(`http://127.0.0.1:${server.port}/health`);
@@ -350,9 +458,9 @@ describe("ws server", () => {
   describe("shutdown", () => {
     it("closes every connection gracefully", async () => {
       const clients = await Promise.all([
-        openClient(await roomUrl("room-1")),
-        openClient(await roomUrl("room-1")),
-        openClient(await roomUrl("room-2")),
+        openRoom("room-1"),
+        openRoom("room-1"),
+        openRoom("room-2"),
       ]);
       await waitFor(() => server.stats().connections === 3);
       const closes = clients.map(closed);
@@ -370,7 +478,7 @@ describe("ws server", () => {
       await server.close();
       server = await start({ shutdownTimeoutMs: 50 });
       base = `ws://127.0.0.1:${server.port}`;
-      const ws = await openClient(await roomUrl());
+      const ws = await openRoom();
       await waitFor(() => server.stats().connections === 1);
       // Pause the client's socket so it never answers the close frame.
       ws.pause();

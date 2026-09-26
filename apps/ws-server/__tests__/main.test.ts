@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { roomTicketProtocols } from "@collab-editor/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/main";
 import { closed, openClient, waitFor } from "./helpers/sockets";
@@ -43,7 +44,8 @@ describe("main", () => {
     }
     const server = result.data;
     const ws = await openClient(
-      `ws://127.0.0.1:${server.port}/room-1?ticket=${await signTicket()}`,
+      `ws://127.0.0.1:${server.port}/room-1`,
+      roomTicketProtocols(await signTicket()),
     );
     await waitFor(() => server.stats().connections === 1);
     const done = closed(ws);

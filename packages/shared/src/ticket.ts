@@ -23,3 +23,20 @@ export interface RoomTicketClaims {
  * "fetch a fresh ticket and reconnect"; a user no longer in the room is refused that ticket.
  */
 export const TICKET_EXPIRED_CLOSE_CODE = 4001;
+
+/**
+ * WebSocket subprotocol every room connection offers, and the only one the WS server ever selects, so
+ * the handshake response never echoes the ticket.
+ */
+export const ROOM_PROTOCOL = "collab.v1";
+
+/** Prefix of the subprotocol that carries the room ticket (a JWT is a valid subprotocol token). */
+export const TICKET_PROTOCOL_PREFIX = "ticket.";
+
+/**
+ * The subprotocols a client offers to join a room: the room protocol and the ticket. The ticket travels
+ * in `Sec-WebSocket-Protocol` rather than the URL, which reverse proxies commonly log.
+ */
+export function roomTicketProtocols(ticket: string): string[] {
+  return [ROOM_PROTOCOL, `${TICKET_PROTOCOL_PREFIX}${ticket}`];
+}

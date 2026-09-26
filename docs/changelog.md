@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Ticket header and upgrade rate limit (#19)
+- The room ticket travels in `Sec-WebSocket-Protocol` (`collab.v1, ticket.<jwt>`, built by `roomTicketProtocols` in `@collab-editor/shared`) instead of the URL, so proxy logs never hold it; the handshake response selects `collab.v1` only and never echoes the ticket
+- `?ticket=` in the URL is no longer accepted; a connection without the header ticket gets `401`
+- Upgrade attempts are limited per remote IP, IPv6 per /64 (30 burst, 1/s, up to 10,000 addresses remembered, least recently used dropped first) before any parsing or ticket verification; excess attempts get `429`; `X-Forwarded-For` is not trusted (ADR 0001 addendum)
+- The web provider connects with the subprotocols and swaps them on every ticket refresh
+- Tests: header ticket joins with `collab.v1` selected; the raw handshake response never contains the ticket; missing, invalid, forged, expired, other-room, duplicate or protocol-less tickets and URL-only tickets get `401`; an upgrade flood gets `429` with no extra ticket verifications, bad tickets count toward the limit, and a spoofed `X-Forwarded-For` does not pick a new bucket; the keyed limiter's bounded LRU table and address keys; the ticket never appears in the logs
+
 ### Close sockets at ticket expiry (#18)
 - The WS server closes each socket with `4001 ticket expired` when its room ticket's `exp` passes; the timer is cleared on any other close
 - `TICKET_EXPIRED_CLOSE_CODE` is shared by both apps (`@collab-editor/shared`)

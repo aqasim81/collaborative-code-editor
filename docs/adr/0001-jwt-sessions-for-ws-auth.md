@@ -65,3 +65,28 @@ connection indefinitely.
   client refreshes on `4001` regardless of the expiry it saw, so skew cannot cause a stale-ticket loop.
 - Pushing revocations (immediate removal) would need a web-app → WS-server channel; it can be revisited
   if a 5-minute window becomes too long.
+
+## Addendum (2026-09-26, #19): the ticket travels in `Sec-WebSocket-Protocol`; upgrades are rate-limited
+
+The ticket was sent as `/<roomId>?ticket=<jwt>`. Reverse proxies and access logs record request lines,
+so a logged ticket could be replayed against its room until it expired. Upgrade attempts were also
+unlimited, each costing an HMAC verification.
+
+**Decision.**
+- The client offers two subprotocols: `collab.v1` (`ROOM_PROTOCOL`) and `ticket.<jwt>`
+  (`roomTicketProtocols(ticket)` in `@collab-editor/shared`). A JWT (base64url and `.`) is a valid
+  subprotocol token.
+- The WS server reads the ticket only from `Sec-WebSocket-Protocol`; it requires `collab.v1` and exactly
+  one `ticket.` entry. The handshake response always selects `collab.v1` and never echoes the ticket.
+  The `?ticket=` query string is not accepted (no fallback).
+- Every upgrade attempt first takes a token from a per-IP bucket (burst 30, 1 per second, at most
+  10,000 remembered addresses) keyed by the socket's remote address (IPv6 by its /64, since one host usually holds a whole /64);
+  an empty bucket gets `429` before
+  the request is parsed or any ticket is verified. `X-Forwarded-For` is not trusted.
+
+**Consequences.**
+- Behind a reverse proxy every client shares the proxy's address and bucket. Deploying behind one
+  (Phase 7) needs an explicit trusted-proxy setting before the limit can key on the forwarded address.
+- Many users behind one NAT share a bucket; the burst covers a reconnect storm of a small office, and
+  each tab otherwise reconnects about once per ticket lifetime.
+- A first-message ticket was rejected: the socket would open before it is authenticated.

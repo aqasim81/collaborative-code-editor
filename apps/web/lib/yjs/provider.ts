@@ -1,4 +1,4 @@
-import { TICKET_EXPIRED_CLOSE_CODE } from "@collab-editor/shared";
+import { roomTicketProtocols, TICKET_EXPIRED_CLOSE_CODE } from "@collab-editor/shared";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import type { RoomTicketResult } from "@/actions/room-ticket";
@@ -71,7 +71,9 @@ export function connectRoom({
       return;
     }
     expiresAt = result.data.expiresAt;
-    provider.params = { ticket: result.data.ticket };
+    // The ticket goes in Sec-WebSocket-Protocol, never the URL (proxies log URLs); y-websocket passes
+    // `protocols` to every socket it opens, including its own reconnects.
+    provider.protocols = roomTicketProtocols(result.data.ticket);
     provider.connect();
   }
 

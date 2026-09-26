@@ -1,4 +1,4 @@
-import { TICKET_EXPIRED_CLOSE_CODE } from "@collab-editor/shared";
+import { roomTicketProtocols, TICKET_EXPIRED_CLOSE_CODE } from "@collab-editor/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import type { RoomTicketResult } from "@/actions/room-ticket";
@@ -16,7 +16,10 @@ class FakeWebSocket {
   onerror: ((event: unknown) => void) | null = null;
   sent: unknown[] = [];
 
-  constructor(readonly url: string) {
+  constructor(
+    readonly url: string,
+    readonly protocols: string[] = [],
+  ) {
     FakeWebSocket.instances.push(this);
   }
   send(data: unknown) {
@@ -99,14 +102,15 @@ afterEach(() => {
 });
 
 describe("connectRoom", () => {
-  it("connects with a fresh ticket for the room in the URL", async () => {
+  it("connects with a fresh ticket in the subprotocols, never in the URL", async () => {
     const fetchTicket = vi.fn(async () => ok("t1", NOW + 300));
     const statuses: ConnectionStatus[] = [];
     const room = connect(fetchTicket, { onStatus: (s) => statuses.push(s) });
 
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
     expect(fetchTicket).toHaveBeenCalledWith("r1");
-    expect(socket(0).url).toBe("ws://ws.test/r1?ticket=t1");
+    expect(socket(0).url).toBe("ws://ws.test/r1");
+    expect(socket(0).protocols).toEqual(roomTicketProtocols("t1"));
 
     socket(0).serverOpen();
     expect(statuses).toEqual(["connecting", "connected"]);
@@ -135,7 +139,8 @@ describe("connectRoom", () => {
     socket(0).serverClose();
 
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
-    expect(socket(1).url).toBe("ws://ws.test/r1?ticket=t2");
+    expect(socket(1).url).toBe("ws://ws.test/r1");
+    expect(socket(1).protocols).toEqual(roomTicketProtocols("t2"));
     // The provider's own retry must not also connect with the stale ticket.
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(FakeWebSocket.instances).toHaveLength(2);
@@ -151,7 +156,8 @@ describe("connectRoom", () => {
     socket(0).serverClose();
 
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
-    expect(socket(1).url).toBe("ws://ws.test/r1?ticket=t1");
+    expect(socket(1).url).toBe("ws://ws.test/r1");
+    expect(socket(1).protocols).toEqual(roomTicketProtocols("t1"));
     expect(fetchTicket).toHaveBeenCalledTimes(1);
   });
 
@@ -170,7 +176,8 @@ describe("connectRoom", () => {
     room.text.insert(0, "kept");
 
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
-    expect(socket(1).url).toBe("ws://ws.test/r1?ticket=t2");
+    expect(socket(1).url).toBe("ws://ws.test/r1");
+    expect(socket(1).protocols).toEqual(roomTicketProtocols("t2"));
     expect(fetchTicket).toHaveBeenCalledTimes(2);
     // The provider's own retry must not also connect with the expired ticket.
     await new Promise((resolve) => setTimeout(resolve, 150));
