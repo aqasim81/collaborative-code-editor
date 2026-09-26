@@ -22,8 +22,12 @@ import { RoomProvider, useRoom } from "@/components/room/room-provider";
 const ADA = { id: "u1", name: "Ada", image: null };
 
 function Probe() {
-  const { text, status, error } = useRoom();
-  return <div data-testid="probe">{`${text.toString()}|${status}|${error ?? ""}`}</div>;
+  const { text, status, error, reloadHint } = useRoom();
+  return (
+    <div data-testid="probe">
+      {`${text.toString()}|${status}|${error ?? ""}${reloadHint ? "|reload" : ""}`}
+    </div>
+  );
 }
 
 function lastCall() {
@@ -94,6 +98,45 @@ describe("RoomProvider", () => {
 
     act(() => options.onStatus?.("disconnected"));
     expect(screen.getByTestId("probe")).toHaveTextContent("hello|disconnected|");
+  });
+
+  it("shows the reload hint while ticket fetches keep failing and hides it once connected (#43)", () => {
+    render(
+      <RoomProvider roomId="r1" user={ADA} serverUrl="ws://ws.test">
+        <Probe />
+      </RoomProvider>,
+    );
+    const { options } = lastCall();
+
+    act(() => options.onReloadHint?.(true));
+    expect(screen.getByTestId("probe")).toHaveTextContent("hello|connecting||reload");
+
+    act(() => options.onReloadHint?.(false));
+    expect(screen.getByTestId("probe")).toHaveTextContent(/^hello\|connecting\|$/);
+
+    act(() => options.onReloadHint?.(true));
+    act(() => options.onStatus?.("connected"));
+    expect(screen.getByTestId("probe")).toHaveTextContent(/^hello\|connected\|$/);
+  });
+
+  it("resets the previous room's status, error and reload hint when it switches rooms (#43)", () => {
+    const { rerender } = render(
+      <RoomProvider roomId="r1" user={ADA} serverUrl="ws://ws.test">
+        <Probe />
+      </RoomProvider>,
+    );
+    act(() => lastCall().options.onStatus?.("connected"));
+    act(() => lastCall().options.onError?.("Room not found"));
+    act(() => lastCall().options.onReloadHint?.(true));
+
+    rerender(
+      <RoomProvider roomId="r2" user={ADA} serverUrl="ws://ws.test">
+        <Probe />
+      </RoomProvider>,
+    );
+
+    expect(lastCall().options.roomId).toBe("r2");
+    expect(screen.getByTestId("probe")).toHaveTextContent(/^hello\|connecting\|$/);
   });
 
   it("renders the fallback, also on the server, until the connection exists", () => {

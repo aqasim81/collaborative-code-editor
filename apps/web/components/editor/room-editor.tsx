@@ -27,7 +27,7 @@ interface RoomViewProps {
 }
 
 function RoomView({ roomName, selfId, language, onLanguageChange }: RoomViewProps) {
-  const { text, awareness, status, error } = useRoom();
+  const { text, awareness, status, error, reloadHint } = useRoom();
   return (
     <div className="flex h-full flex-col">
       <Toolbar
@@ -43,6 +43,18 @@ function RoomView({ roomName, selfId, language, onLanguageChange }: RoomViewProp
         >
           Could not join this room: {error}
         </p>
+      ) : null}
+      {reloadHint && !error ? (
+        <output className="flex shrink-0 items-center gap-3 border-b border-yellow-300 bg-yellow-50 px-4 py-2 text-sm text-yellow-900 dark:border-yellow-900 dark:bg-yellow-950 dark:text-yellow-200">
+          <span>Having trouble reconnecting. Reloading the page may help.</span>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded border border-yellow-400 px-2 py-0.5 font-medium hover:bg-yellow-100 focus-visible:outline-2 focus-visible:outline-yellow-600 dark:hover:bg-yellow-900"
+          >
+            Reload
+          </button>
+        </output>
       ) : null}
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1">

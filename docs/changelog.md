@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Reload hint after prolonged ticket failures (#43)
+- After 8 room ticket fetches in a row have thrown (one to two and a half minutes with the #27 backoff), the room shows a yellow banner: "Having trouble reconnecting. Reloading the page may help." with a Reload button; it helps when every call fails the same way, e.g. a tab left open across a deploy calling a server action that no longer exists
+- Retrying continues meanwhile; the banner clears when a fetch returns or the socket connects, and is hidden while a refusal is shown. The page never reloads by itself, because a reload drops unsynced edits
+- The banner is a polite live region (`<output>`), not an alert; the button is keyboard reachable
+- Switching rooms resets the connection status, error and hint, so none of them carries over from the previous room
+- Tests: the hint fires once at the 8th failure and not before, is withdrawn by a success or a refusal, never follows a refusal alone or a short blip, stops on destroy; the provider exposes and resets it; the room view shows it, hides it behind an error, and reloads only on click
+
 ### Client-boundary check covers packages and server-to-client props (#24)
 - The Invariant 6 import-graph walk now flags server-only packages reached from client code: `@prisma/client`, `@auth/prisma-adapter`, `jose`, `next-auth/providers/*`, `next/headers`, the bare `next-auth` server entry and Node builtins (`node:*`, `crypto`, `fs/promises`, ...); `next-auth/react` and type-only imports stay allowed
 - New test helper `__tests__/helpers/client-props.ts` finds non-public env values anywhere in a client component's props; the room page test asserts `RoomEditor` gets exactly its five props, a `user` of `id`, `name`, `image`, and no server value

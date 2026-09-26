@@ -13,6 +13,8 @@ export interface RoomContextValue {
   awareness: Awareness;
   status: ConnectionStatus;
   error: string | null;
+  /** Ticket fetches have kept failing: suggest a reload (the user decides; unsynced edits would be lost). */
+  reloadHint: boolean;
 }
 
 const RoomContext = createContext<RoomContextValue | null>(null);
@@ -38,6 +40,7 @@ export function RoomProvider({
   const [connection, setConnection] = useState<RoomConnection | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [error, setError] = useState<string | null>(null);
+  const [reloadHint, setReloadHint] = useState(false);
 
   // Primitive deps: a new `user` object on every render must not reconnect the room.
   const { id: userId, name: userName, image: userImage } = user;
@@ -51,14 +54,20 @@ export function RoomProvider({
         setStatus(value);
         if (value === "connected") {
           setError(null);
+          setReloadHint(false);
         }
       },
       onError: setError,
+      onReloadHint: setReloadHint,
     });
     setConnection(next);
     return () => {
       next.destroy();
       setConnection(null);
+      // The provider is reused across rooms: nothing of the old room's connection may carry over.
+      setStatus("connecting");
+      setError(null);
+      setReloadHint(false);
     };
   }, [roomId, serverUrl, userId, userName, userImage]);
 
@@ -73,6 +82,7 @@ export function RoomProvider({
         awareness: connection.awareness,
         status,
         error,
+        reloadHint,
       }}
     >
       {children}

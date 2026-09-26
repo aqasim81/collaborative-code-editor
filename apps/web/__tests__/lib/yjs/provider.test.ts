@@ -12,6 +12,7 @@ import {
   type ConnectRoomOptions,
   connectRoom,
   type RoomConnection,
+  TICKET_FAILURES_BEFORE_RELOAD_HINT,
   TICKET_RETRY_BASE_MS,
   TICKET_RETRY_MAX_MS,
   ticketRetryDelayMs,
@@ -141,7 +142,7 @@ let connection: RoomConnection | null = null;
 
 function connect(
   fetchTicket: (roomId: string) => Promise<RoomTicketResult>,
-  extra: Pick<ConnectRoomOptions, "onStatus" | "onError" | "retryDelayMs"> = {},
+  extra: Pick<ConnectRoomOptions, "onStatus" | "onError" | "onReloadHint" | "retryDelayMs"> = {},
 ): RoomConnection {
   connection = connectRoom({
     serverUrl: "ws://ws.test/",
@@ -478,6 +479,96 @@ describe("connectRoom", () => {
 
     expect(retryDelayMs).not.toHaveBeenCalled();
     expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  it("suggests a reload once, after repeated ticket failures (#43)", async () => {
+    const onError = vi.fn();
+    const fetchTicket = vi.fn(async (): Promise<RoomTicketResult> => {
+      throw new Error("stale server action");
+    });
+    // How many fetches had failed each time the hint changed.
+    const failuresAtHint: number[] = [];
+    const onReloadHint = vi.fn((_show: boolean) => {
+      failuresAtHint.push(fetchTicket.mock.calls.length);
+    });
+    connect(fetchTicket, { onReloadHint, onError, retryDelayMs: () => 0 });
+
+    await vi.waitFor(() =>
+      expect(fetchTicket.mock.calls.length).toBeGreaterThan(TICKET_FAILURES_BEFORE_RELOAD_HINT + 2),
+    );
+    expect(onReloadHint.mock.calls).toEqual([[true]]);
+    expect(failuresAtHint).toEqual([TICKET_FAILURES_BEFORE_RELOAD_HINT]);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("withdraws the reload hint once a retry succeeds (#43)", async () => {
+    const onReloadHint = vi.fn();
+    const fetchTicket = vi.fn<(roomId: string) => Promise<RoomTicketResult>>();
+    for (let i = 0; i < TICKET_FAILURES_BEFORE_RELOAD_HINT; i += 1) {
+      fetchTicket.mockRejectedValueOnce(new Error("down"));
+    }
+    fetchTicket.mockResolvedValueOnce(ok("t2", NOW + 300));
+    connect(fetchTicket, { onReloadHint, retryDelayMs: () => 0 });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(socket(0).protocols).toEqual(roomTicketProtocols("t2"));
+    expect(onReloadHint.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it("does not suggest a reload for a short blip (#43)", async () => {
+    const onReloadHint = vi.fn();
+    const fetchTicket = vi
+      .fn<(roomId: string) => Promise<RoomTicketResult>>()
+      .mockRejectedValueOnce(new Error("down"))
+      .mockRejectedValueOnce(new Error("down"))
+      .mockResolvedValueOnce(ok("t1", NOW + 300));
+    connect(fetchTicket, { onReloadHint, retryDelayMs: () => 0 });
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(onReloadHint).not.toHaveBeenCalled();
+  });
+
+  it("never suggests a reload for a refused ticket (#43)", async () => {
+    const onReloadHint = vi.fn();
+    const onError = vi.fn();
+    connect(async () => ({ success: false, error: "Room not found" }), {
+      onReloadHint,
+      onError,
+      retryDelayMs: () => 0,
+    });
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Room not found"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onReloadHint).not.toHaveBeenCalled();
+  });
+
+  it("withdraws the reload hint when the fetch finally returns a refusal (#43)", async () => {
+    const onReloadHint = vi.fn();
+    const onError = vi.fn();
+    const fetchTicket = vi.fn<(roomId: string) => Promise<RoomTicketResult>>();
+    for (let i = 0; i < TICKET_FAILURES_BEFORE_RELOAD_HINT; i += 1) {
+      fetchTicket.mockRejectedValueOnce(new Error("down"));
+    }
+    fetchTicket.mockResolvedValueOnce({ success: false, error: "Room not found" });
+    connect(fetchTicket, { onReloadHint, onError, retryDelayMs: () => 0 });
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Room not found"));
+    expect(onReloadHint.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it("stops hinting after destroy (#43)", async () => {
+    const onReloadHint = vi.fn();
+    const fetchTicket = vi.fn(async (): Promise<RoomTicketResult> => {
+      throw new Error("down");
+    });
+    const room = connect(fetchTicket, { onReloadHint, retryDelayMs: () => 0 });
+    await vi.waitFor(() => expect(fetchTicket).toHaveBeenCalled());
+
+    room.destroy();
+    connection = null;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(onReloadHint).not.toHaveBeenCalled();
   });
 
   it("stays down and reports the error when the fresh ticket is refused after expiry", async () => {

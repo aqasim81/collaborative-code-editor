@@ -44,6 +44,13 @@ export const TICKET_RETRY_BASE_MS = 1_000;
 export const TICKET_RETRY_MAX_MS = 30_000;
 
 /**
+ * Thrown ticket fetches in a row after which a reload is suggested: with the backoff above, one to two and
+ * a half minutes of failures, past any blip or redeploy. Some failures repeat on every call (a tab left
+ * open across a deploy calls a server action id that no longer exists) and only a reload clears them.
+ */
+export const TICKET_FAILURES_BEFORE_RELOAD_HINT = 8;
+
+/**
  * Delay before retry number `attempt` (1, 2, 3…). Equal jitter keeps half the backoff and randomises the
  * rest, so tabs that lost the server together don't all come back in the same second.
  */
@@ -61,6 +68,8 @@ export interface ConnectRoomOptions {
   onStatus?: (status: ConnectionStatus) => void;
   /** Called when the ticket is refused; the connection then stays down. */
   onError?: (message: string) => void;
+  /** Called with `true` once ticket fetches have kept throwing for a while, and with `false` once one returns. */
+  onReloadHint?: (show: boolean) => void;
   /** Unix seconds; injectable for tests. */
   now?: () => number;
   /** Wait before retrying a ticket fetch that threw; injectable for tests. */
@@ -84,6 +93,7 @@ export interface RoomConnection {
  * to expire. The Y.Doc outlives every socket, so edits made in between resync on the next connection.
  * A ticket fetch that throws (network drop, redeploy, database down) is retried with backoff until it
  * succeeds or the room is left; a refused ticket is reported through `onError` and never retried.
+ * After a long run of thrown fetches `onReloadHint` suggests a reload; retrying goes on meanwhile.
  */
 export function connectRoom({
   serverUrl,
@@ -92,6 +102,7 @@ export function connectRoom({
   fetchTicket,
   onStatus,
   onError,
+  onReloadHint,
   now = () => Math.floor(Date.now() / 1000),
   retryDelayMs = ticketRetryDelayMs,
   WebSocketPolyfill,
@@ -123,15 +134,22 @@ export function connectRoom({
     if (result === null) {
       // No socket exists meanwhile, so nothing else refetches.
       ticketFailures += 1;
+      if (ticketFailures === TICKET_FAILURES_BEFORE_RELOAD_HINT) {
+        onReloadHint?.(true);
+      }
       onStatus?.(toConnectionStatus("disconnected", everConnected, ticketFailures));
       retryTimer = setTimeout(() => void connectWithFreshTicket(), retryDelayMs(ticketFailures));
       return;
     }
+    // Any answer ends the failure streak: a refusal is shown through `onError` instead of the hint.
+    if (ticketFailures >= TICKET_FAILURES_BEFORE_RELOAD_HINT) {
+      onReloadHint?.(false);
+    }
+    ticketFailures = 0;
     if (!result.success) {
       onError?.(result.error);
       return;
     }
-    ticketFailures = 0;
     expiresAt = result.data.expiresAt;
     // The ticket goes in Sec-WebSocket-Protocol, never the URL (proxies log URLs); y-websocket passes
     // `protocols` to every socket it opens, including its own reconnects.

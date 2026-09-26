@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { room } = vi.hoisted(() => ({
   room: {
@@ -9,6 +9,7 @@ const { room } = vi.hoisted(() => ({
       awareness: "presence",
       status: "connected",
       error: null as string | null,
+      reloadHint: false,
     },
   },
 }));
@@ -64,7 +65,13 @@ function renderEditor() {
 
 describe("RoomEditor", () => {
   beforeEach(() => {
-    room.value = { text: "shared-text", awareness: "presence", status: "connected", error: null };
+    room.value = {
+      text: "shared-text",
+      awareness: "presence",
+      status: "connected",
+      error: null,
+      reloadHint: false,
+    };
   });
 
   it("connects to the room and binds the editor to its shared text", () => {
@@ -94,15 +101,54 @@ describe("RoomEditor", () => {
   });
 
   it("shows why the room could not be joined", () => {
-    room.value = {
-      text: "shared-text",
-      awareness: "presence",
-      status: "connecting",
-      error: "Room not found",
-    };
+    room.value = { ...room.value, status: "connecting", error: "Room not found" };
     renderEditor();
 
     expect(screen.getByRole("alert")).toHaveTextContent("Could not join this room: Room not found");
     expect(screen.getByRole("status")).toHaveTextContent("Disconnected");
+  });
+
+  it("suggests a reload while ticket fetches keep failing (#43)", () => {
+    room.value = { ...room.value, status: "disconnected", reloadHint: true };
+    renderEditor();
+
+    expect(
+      screen
+        .getAllByRole("status")
+        .some((el) =>
+          el.textContent?.startsWith("Having trouble reconnecting. Reloading the page may help."),
+        ),
+    ).toBe(true);
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows only the refusal when a reload hint and an error coincide (#43)", () => {
+    room.value = {
+      ...room.value,
+      status: "disconnected",
+      error: "Room not found",
+      reloadHint: true,
+    };
+    renderEditor();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not join this room: Room not found");
+    expect(screen.queryByText(/Having trouble reconnecting/)).not.toBeInTheDocument();
+  });
+
+  it("reloads the page only when the user asks (#43)", () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    room.value = { ...room.value, status: "disconnected", reloadHint: true };
+    renderEditor();
+    expect(reload).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 });
