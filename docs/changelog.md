@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Byte budget per connection (#22)
+- Each WS connection has a second token bucket over inbound bytes (16 MiB burst — two maximum-size frames — refilled at 1 MiB/s) next to the message bucket; exceeding it closes the connection with 1008 (`byte budget exceeded`) before the frame is parsed
+- Frames still arriving after a limiter has started closing a connection are dropped; `startServer` refuses a byte budget smaller than the frame cap
+- The limits are named constants in `apps/ws-server/src/rate-limit.ts` (`DEFAULT_BYTE_RATE_LIMIT`, `DEFAULT_MAX_PAYLOAD_BYTES`); `ServerOptions.byteRateLimit` overrides them in tests
+- Tests: a 40 MiB flood under the message budget is closed with 1008; a fresh connection whose first sync uploads a 10K-line (>1 MB) document stays open
+
 ### Client-boundary check (#16, #21)
 - The Invariant 6 test walks the import graph from every `"use client"` module, resolving `./`, `../` and `@/` specifiers, and fails if any reached module is server-only (the listed `lib/` modules or any module importing `server-only`); a violation is reported as the import chain
 - Static, side-effect, re-export and dynamic imports are followed; type-only imports and the imports of `"use server"` modules are not

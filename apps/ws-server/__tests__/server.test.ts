@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { connect, createServer } from "node:net";
+import * as encoding from "lib0/encoding";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import * as Y from "yjs";
 import { type RunningServer, type ServerOptions, startServer } from "../src/server";
 import { silentLogger } from "./helpers/logger";
 import { closed, expectUpgradeRejected, nextMessage, openClient, waitFor } from "./helpers/sockets";
@@ -26,6 +28,17 @@ function rawRequest(port: number, upgrade: boolean): Promise<string> {
     });
     socket.on("close", () => resolve(data));
   });
+}
+
+/** A valid y-websocket sync update frame carrying roughly `bytes` of document content. */
+function syncUpdateFrame(bytes: number, char = "x"): Uint8Array {
+  const doc = new Y.Doc();
+  doc.getText("codemirror").insert(0, char.repeat(bytes));
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, 0); // sync message
+  encoding.writeVarUint(encoder, 2); // update
+  encoding.writeVarUint8Array(encoder, Y.encodeStateAsUpdate(doc));
+  return encoding.toUint8Array(encoder);
 }
 
 let server: RunningServer;
@@ -187,6 +200,57 @@ describe("ws server", () => {
     }
 
     expect(await done).toEqual({ code: 1008, reason: "rate limit exceeded" });
+  });
+
+  it("closes a client that floods bytes with 1008 under the default budget (Invariant 1)", async () => {
+    const ws = await openClient(await roomUrl());
+    const done = closed(ws);
+    const frame = syncUpdateFrame(1024 * 1024);
+
+    // 40 frames stay well under the message budget (100) but carry 40 MiB.
+    for (let i = 0; i < 40; i++) {
+      ws.send(frame);
+    }
+
+    expect(await done).toEqual({ code: 1008, reason: "byte budget exceeded" });
+    await waitFor(() => server.stats().connections === 0);
+  });
+
+  it("ignores frames that arrive after a limiter closed the connection (Invariant 1)", async () => {
+    await server.close();
+    server = await start({
+      maxPayloadBytes: 2_000,
+      byteRateLimit: { capacity: 2_000, refillPerSecond: 1 },
+    });
+    base = `ws://127.0.0.1:${server.port}`;
+    const ws = await openClient(await roomUrl());
+    const done = closed(ws);
+
+    ws.send(syncUpdateFrame(1_500, "a")); // accepted, ~500 bytes left
+    ws.send(syncUpdateFrame(1_500, "b")); // over budget: closes
+    ws.send(syncUpdateFrame(10, "c")); // would fit the remaining budget
+
+    expect(await done).toEqual({ code: 1008, reason: "byte budget exceeded" });
+    const text = server.rooms.get("room-1")?.state.doc.getText("codemirror").toString() ?? "";
+    expect(text).not.toContain("c");
+  });
+
+  it("refuses a byte budget smaller than the frame cap", async () => {
+    const result = await startServer({
+      port: 0,
+      host: "127.0.0.1",
+      ticketSecret: TEST_SECRET,
+      roomGracePeriodMs: 30_000,
+      logger: silentLogger,
+      store: createMemoryStore(),
+      maxPayloadBytes: 1_000,
+      byteRateLimit: { capacity: 999, refillPerSecond: 1 },
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: "byte budget capacity (999) is below the frame cap (1000)",
+    });
   });
 
   describe("http", () => {

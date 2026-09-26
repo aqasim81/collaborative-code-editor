@@ -25,8 +25,8 @@ async function start(store: DocumentStore = createMemoryStore()): Promise<Runnin
   return result.data;
 }
 
-async function client(server: RunningServer, roomId = "room-1"): Promise<YClient> {
-  const c = await connectYClient(server.port, roomId);
+async function client(server: RunningServer, roomId = "room-1", doc?: Y.Doc): Promise<YClient> {
+  const c = await connectYClient(server.port, roomId, doc);
   cleanups.push(() => c.destroy());
   await synced(c);
   return c;
@@ -123,6 +123,34 @@ describe("CRDT convergence (Invariant 3)", () => {
 
     await waitFor(converged(a, b), 5_000);
     expect(a.text.toString()).toBe("offline-a shared online-b");
+  });
+});
+
+describe("byte budget (Invariant 1)", () => {
+  it("does not close a fresh connection whose first sync uploads a 10K-line document", async () => {
+    const store = createMemoryStore();
+    const server = await start(store);
+    cleanups.push(() => server.close());
+    // Typed line by line, as an editor would produce it: one insert per line of ~100 characters.
+    const doc = new Y.Doc();
+    const text = doc.getText("codemirror");
+    for (let i = 0; i < 10_000; i++) {
+      text.insert(
+        text.length,
+        `${`export const value${i} = computeSomething(${i}, "padding");`.padEnd(99, " ")}\n`,
+      );
+    }
+    expect(Y.encodeStateAsUpdate(doc).length).toBeGreaterThan(1_000_000);
+
+    const a = await client(server, "room-1", doc);
+    const serverText = () => server.rooms.get("room-1")?.state.doc.getText("codemirror");
+    await waitFor(() => serverText()?.length === text.length, 5_000);
+
+    // Still connected: a follow-up edit arrives and the upload was persisted.
+    a.text.insert(0, "// edited\n");
+    await waitFor(() => serverText()?.toString().startsWith("// edited\n") === true);
+    expect(server.stats().connections).toBe(1);
+    expect(storedText(store, "room-1")).toBe(a.text.toString());
   });
 });
 

@@ -11,9 +11,15 @@ export interface YClient {
   destroy(): void;
 }
 
-/** A browser-equivalent Yjs client: y-websocket's provider over `ws`, with a ticket for the room. */
-export async function connectYClient(port: number, roomId = "room-1"): Promise<YClient> {
-  const doc = new Y.Doc();
+/**
+ * A browser-equivalent Yjs client: y-websocket's provider over `ws`, with a ticket for the room. Pass a
+ * `doc` that already holds content to model a client whose first sync uploads it.
+ */
+export async function connectYClient(
+  port: number,
+  roomId = "room-1",
+  doc = new Y.Doc(),
+): Promise<YClient> {
   const provider = new WebsocketProvider(`ws://127.0.0.1:${port}`, roomId, doc, {
     params: { ticket: await signTicket({ roomId }) },
     WebSocketPolyfill: WebSocket as unknown as typeof globalThis.WebSocket,

@@ -7,7 +7,13 @@ import { verifyRoomTicket } from "./auth/ticket";
 import { parseClientMessage } from "./handlers/messages";
 import type { Logger } from "./logger";
 import type { DocumentStore } from "./persistence/document-store";
-import { createRateLimiter, DEFAULT_RATE_LIMIT, type RateLimitOptions } from "./rate-limit";
+import {
+  createRateLimiter,
+  DEFAULT_BYTE_RATE_LIMIT,
+  DEFAULT_MAX_PAYLOAD_BYTES,
+  DEFAULT_RATE_LIMIT,
+  type RateLimitOptions,
+} from "./rate-limit";
 import type { Result } from "./result";
 import { createRoomManager, type RoomManager } from "./rooms/room-manager";
 import { parseSyncMessage } from "./sync/protocol";
@@ -26,7 +32,10 @@ export interface ServerOptions {
   logger: Logger;
   /** Where room documents are persisted. The server owns it from here on and closes it on shutdown. */
   store: DocumentStore;
+  /** Inbound messages per connection. */
   rateLimit?: RateLimitOptions;
+  /** Inbound bytes per connection; its capacity should be at least `maxPayloadBytes`. */
+  byteRateLimit?: RateLimitOptions;
   maxPayloadBytes?: number;
   /** How long shutdown waits for a client's close handshake before terminating it. */
   shutdownTimeoutMs?: number;
@@ -51,8 +60,6 @@ export interface RunningServer {
 
 // Room ids are cuids today; allow the URL-safe alphabet and nothing that needs decoding.
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-// A 10K-line document can exceed 1 MiB in a single sync step; a frame over the limit drops the connection.
-const DEFAULT_MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
 
 /** Parses a request target; null for one a client malformed on purpose (e.g. `http://[`). */
@@ -89,6 +96,15 @@ function send(ws: WebSocket, message: ServerMessage): void {
 export async function startServer(options: ServerOptions): Promise<Result<RunningServer>> {
   const { logger, ticketSecret, store } = options;
   const rateLimit = options.rateLimit ?? DEFAULT_RATE_LIMIT;
+  const byteRateLimit = options.byteRateLimit ?? DEFAULT_BYTE_RATE_LIMIT;
+  const maxPayload = options.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES;
+  // A smaller byte budget would refuse every frame between the two sizes, including large first syncs.
+  if (byteRateLimit.capacity < maxPayload) {
+    return {
+      success: false,
+      error: `byte budget capacity (${byteRateLimit.capacity}) is below the frame cap (${maxPayload})`,
+    };
+  }
   const shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
   const rooms: RoomManager<Peer, SyncRoom> = createRoomManager<Peer, SyncRoom>({
     gracePeriodMs: options.roomGracePeriodMs,
@@ -99,7 +115,7 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
   });
   const wss = new WebSocketServer({
     noServer: true,
-    maxPayload: options.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES,
+    maxPayload,
   });
   let closing = false;
 
@@ -132,15 +148,26 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     log.info("client joined");
 
     const limiter = createRateLimiter(rateLimit);
-    ws.on("message", (data, isBinary) => {
+    const byteLimiter = createRateLimiter(byteRateLimit);
+    ws.on("message", (raw, isBinary) => {
+      // Once a limiter (or anything else) has started closing, frames still in flight are dropped.
+      if (ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      // binaryType is the default "nodebuffer", so every frame arrives as a Buffer.
+      const data = raw as Buffer;
       if (!limiter.tryConsume()) {
         log.warn("rate limit exceeded, closing connection");
         ws.close(1008, "rate limit exceeded");
         return;
       }
-      // binaryType is the default "nodebuffer", so every frame arrives as a Buffer.
+      if (!byteLimiter.tryConsume(data.length)) {
+        log.warn({ bytes: data.length }, "byte budget exceeded, closing connection");
+        ws.close(1008, "byte budget exceeded");
+        return;
+      }
       if (isBinary) {
-        const sync = parseSyncMessage(data as Buffer);
+        const sync = parseSyncMessage(data);
         if (!sync.success) {
           log.debug({ reason: sync.error }, "sync message rejected");
           ws.close(INVALID_MESSAGE_CLOSE_CODE, "invalid sync message");
@@ -149,7 +176,7 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
         room.state.handle(peer, sync.data);
         return;
       }
-      const message = parseClientMessage(data as Buffer);
+      const message = parseClientMessage(data);
       if (!message.success) {
         log.debug({ reason: message.error }, "message rejected");
         send(ws, { type: "error", message: message.error });
