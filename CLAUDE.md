@@ -6,7 +6,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 5 complete — the room editor is bound to a shared Yjs document synced through the WS server, which speaks the y-websocket protocol on `y-protocols`, validates every frame and stores each update in LevelDB (`WS_PERSISTENCE_DIR`) before broadcasting it (ADR 0002). Room tickets (ADR 0001 addendum) are refreshed before a reconnect. Local DB: `docker compose up -d` (port 5434); dev seed creates `/room/seed-room`. The Invariant 6 test walks the client import graph (#16, #21); each WS connection has a byte budget as well as a message budget (#22). Next: follow-ups #18, #19, then Phase 6 (presence and cursors, #9).
+Phase 5 complete — the room editor is bound to a shared Yjs document synced through the WS server, which speaks the y-websocket protocol on `y-protocols`, validates every frame and stores each update in LevelDB (`WS_PERSISTENCE_DIR`) before broadcasting it (ADR 0002). Room tickets (ADR 0001 addendum) are refreshed before a reconnect. Local DB: `docker compose up -d` (port 5434); dev seed creates `/room/seed-room`. The Invariant 6 test walks the client import graph (#16, #21); each WS connection has a byte budget as well as a message budget (#22); sockets close with 4001 at ticket expiry and the client reconnects with a fresh ticket (#18). Next: follow-up #19, then Phase 6 (presence and cursors, #9).
 
 ## Stack
 

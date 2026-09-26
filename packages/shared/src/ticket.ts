@@ -17,3 +17,9 @@ export interface RoomTicketClaims {
   iat: number;
   exp: number;
 }
+
+/**
+ * WebSocket close code the WS server sends when a connection's room ticket expires. Clients treat it as
+ * "fetch a fresh ticket and reconnect"; a user no longer in the room is refused that ticket.
+ */
+export const TICKET_EXPIRED_CLOSE_CODE = 4001;

@@ -1,4 +1,6 @@
+import { TICKET_EXPIRED_CLOSE_CODE } from "@collab-editor/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as Y from "yjs";
 import type { RoomTicketResult } from "@/actions/room-ticket";
 import { type ConnectionStatus, connectRoom, type RoomConnection } from "@/lib/yjs/provider";
 
@@ -27,10 +29,36 @@ class FakeWebSocket {
     this.readyState = 1;
     this.onopen?.();
   }
-  serverClose() {
-    this.readyState = 3;
-    this.onclose?.({ code: 1006 });
+  serverSend(data: Uint8Array) {
+    this.onmessage?.({ data: data.slice().buffer });
   }
+  serverClose(code = 1006) {
+    this.readyState = 3;
+    this.onclose?.({ code });
+  }
+}
+
+/** y-websocket sync step 1 for an empty document: message sync (0), step 1 (0), empty state vector. */
+const EMPTY_SYNC_STEP_1 = new Uint8Array([0, 0, 1, 0]);
+
+/** The Yjs update inside a sync step 2 frame (message sync 0, step 2 = 1, var-length update), or null. */
+function syncStep2Update(frame: unknown): Uint8Array | null {
+  const bytes = frame instanceof Uint8Array ? frame : null;
+  if (!bytes || bytes[0] !== 0 || bytes[1] !== 1) {
+    return null;
+  }
+  let length = 0;
+  let shift = 0;
+  let index = 2;
+  for (;;) {
+    const byte = bytes[index++] ?? 0;
+    length += (byte & 0x7f) * 2 ** shift;
+    shift += 7;
+    if (byte < 0x80) {
+      break;
+    }
+  }
+  return bytes.slice(index, index + length);
 }
 
 const NOW = 1_000;
@@ -125,6 +153,71 @@ describe("connectRoom", () => {
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
     expect(socket(1).url).toBe("ws://ws.test/r1?ticket=t1");
     expect(fetchTicket).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetches a fresh ticket and reconnects when the server closes with ticket expired", async () => {
+    const fetchTicket = vi
+      .fn<(roomId: string) => Promise<RoomTicketResult>>()
+      // The ticket still looks fresh to this client (clocks may differ); the server's close code decides.
+      .mockResolvedValueOnce(ok("t1", NOW + 300))
+      .mockResolvedValueOnce(ok("t2", NOW + 600));
+    const room = connect(fetchTicket);
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    socket(0).serverOpen();
+
+    socket(0).serverClose(TICKET_EXPIRED_CLOSE_CODE);
+    // A local edit made while disconnected is kept in the document.
+    room.text.insert(0, "kept");
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+    expect(socket(1).url).toBe("ws://ws.test/r1?ticket=t2");
+    expect(fetchTicket).toHaveBeenCalledTimes(2);
+    // The provider's own retry must not also connect with the expired ticket.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    socket(1).serverOpen();
+    // The server asks for everything it lacks; the reply must carry the edit made while disconnected.
+    socket(1).serverSend(EMPTY_SYNC_STEP_1);
+    const update = socket(1)
+      .sent.map(syncStep2Update)
+      .find((u) => u !== null);
+    if (!update) {
+      throw new Error("no sync step 2 reply");
+    }
+    const server = new Y.Doc();
+    Y.applyUpdate(server, update);
+    expect(server.getText("codemirror").toString()).toBe("kept");
+  });
+
+  it("reports a ticket fetch that throws instead of failing silently", async () => {
+    const onError = vi.fn();
+    connect(
+      async () => {
+        throw new Error("network down");
+      },
+      { onError },
+    );
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Could not get a room ticket"));
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  it("stays down and reports the error when the fresh ticket is refused after expiry", async () => {
+    const onError = vi.fn();
+    const fetchTicket = vi
+      .fn<(roomId: string) => Promise<RoomTicketResult>>()
+      .mockResolvedValueOnce(ok("t1", NOW + 300))
+      .mockResolvedValueOnce({ success: false, error: "Room not found" });
+    connect(fetchTicket, { onError });
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    socket(0).serverOpen();
+
+    socket(0).serverClose(TICKET_EXPIRED_CLOSE_CODE);
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Room not found"));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
   it("stops everything on destroy, including a ticket that arrives later", async () => {

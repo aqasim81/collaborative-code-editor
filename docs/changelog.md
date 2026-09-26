@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Close sockets at ticket expiry (#18)
+- The WS server closes each socket with `4001 ticket expired` when its room ticket's `exp` passes; the timer is cleared on any other close
+- `TICKET_EXPIRED_CLOSE_CODE` is shared by both apps (`@collab-editor/shared`)
+- The web provider fetches a fresh ticket and reconnects on `4001`, whatever expiry it last saw; local edits are kept and resync through Yjs; a refused ticket leaves the connection down with the error shown
+- A member removed from a room loses a live connection within one ticket lifetime (≤ 5 minutes); revocation is not pushed (ADR 0001 addendum)
+- The expiry delay is capped at the ticket TTL, so a web-app clock running ahead cannot stretch a socket past 5 minutes; a ticket fetch that throws is reported instead of leaving the room silently disconnected (retry is #27)
+- Tests: close at expiry, capped lifetime under clock skew, open before expiry and no timer left after a normal disconnect (fake timers); provider refresh and reconnect on `4001`, the offline edit carried in the sync step 2 reply, a throwing ticket fetch reported, and staying down when the fresh ticket is refused
+
 ### Byte budget per connection (#22)
 - Each WS connection has a second token bucket over inbound bytes (16 MiB burst — two maximum-size frames — refilled at 1 MiB/s) next to the message bucket; exceeding it closes the connection with 1008 (`byte budget exceeded`) before the frame is parsed
 - Frames still arriving after a limiter has started closing a connection are dropped; `startServer` refuses a byte budget smaller than the frame cap

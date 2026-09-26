@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { connect, createServer } from "node:net";
+import { TICKET_EXPIRED_CLOSE_CODE } from "@collab-editor/shared";
 import * as encoding from "lib0/encoding";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { type RunningServer, type ServerOptions, startServer } from "../src/server";
 import { silentLogger } from "./helpers/logger";
@@ -250,6 +251,82 @@ describe("ws server", () => {
     expect(result).toEqual({
       success: false,
       error: "byte budget capacity (999) is below the frame cap (1000)",
+    });
+  });
+
+  describe("ticket expiry (Invariants 1 and 2)", () => {
+    beforeEach(() => {
+      // Only the timers are fake; sockets keep doing real I/O while fake time advances with real time.
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("uses an application close code", () => {
+      expect(TICKET_EXPIRED_CLOSE_CODE).toBe(4001);
+    });
+
+    it("closes a socket with 4001 when its ticket expires", async () => {
+      const ticket = await signTicket({ exp: now() + 60 });
+      const ws = await openClient(`${base}/room-1?ticket=${ticket}`);
+      await waitFor(() => server.stats().connections === 1);
+      const done = closed(ws);
+
+      vi.advanceTimersByTime(61_000);
+
+      expect(await done).toEqual({ code: TICKET_EXPIRED_CLOSE_CODE, reason: "ticket expired" });
+      await waitFor(() => server.stats().connections === 0);
+    });
+
+    it("keeps a socket open while its ticket is valid", async () => {
+      const ws = await openClient(await roomUrl());
+      await waitFor(() => server.stats().connections === 1);
+
+      vi.advanceTimersByTime(200_000);
+      const reply = nextMessage(ws);
+      ws.send(JSON.stringify({ type: "ping" }));
+
+      expect(await reply).toEqual({ type: "pong" });
+      expect(ws.readyState).toBe(ws.OPEN);
+      ws.close();
+    });
+
+    it("closes a ticket that expires moments after the upgrade at its exp", async () => {
+      const ticket = await signTicket({ exp: now() + 1 });
+      const ws = await openClient(`${base}/room-1?ticket=${ticket}`);
+      const done = closed(ws);
+
+      vi.advanceTimersByTime(1_000);
+
+      expect(await done).toEqual({ code: TICKET_EXPIRED_CLOSE_CODE, reason: "ticket expired" });
+    });
+
+    it("closes a socket within one ticket lifetime even if the issuer's clock runs ahead", async () => {
+      // Issued by a clock 100 s ahead: exp is 400 s away on this server's clock.
+      const ticket = await signTicket({ iat: now() + 100, exp: now() + 400 });
+      const ws = await openClient(`${base}/room-1?ticket=${ticket}`);
+      await waitFor(() => server.stats().connections === 1);
+      const done = closed(ws);
+
+      vi.advanceTimersByTime(300_000);
+
+      expect(await done).toEqual({ code: TICKET_EXPIRED_CLOSE_CODE, reason: "ticket expired" });
+    });
+
+    it("clears the expiry timer on a normal disconnect", async () => {
+      const ws = await openClient(await roomUrl());
+      await waitFor(() => server.stats().connections === 1);
+      const done = closed(ws);
+      ws.close();
+      await done;
+      await waitFor(() => server.stats().connections === 0);
+
+      // Only the empty room's grace-period timer is left; once it fires nothing is pending.
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(30_000);
+      expect(server.stats().rooms).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 

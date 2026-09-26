@@ -1,3 +1,4 @@
+import { TICKET_EXPIRED_CLOSE_CODE } from "@collab-editor/shared";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import type { RoomTicketResult } from "@/actions/room-ticket";
@@ -31,8 +32,9 @@ export interface RoomConnection {
 
 /**
  * Connects a new Y.Doc to a room on the WS server. The server only accepts short-lived room tickets
- * (Invariant 1), so a fresh one is fetched before the first connection and before any reconnect that
- * would present a ticket about to expire.
+ * (Invariant 1), so a fresh one is fetched before the first connection, after the server closes a
+ * socket because its ticket expired, and before any other reconnect that would present a ticket about
+ * to expire. The Y.Doc outlives every socket, so edits made in between resync on the next connection.
  */
 export function connectRoom({
   serverUrl,
@@ -54,7 +56,13 @@ export function connectRoom({
   let destroyed = false;
 
   async function connectWithFreshTicket(): Promise<void> {
-    const result = await fetchTicket(roomId);
+    let result: RoomTicketResult;
+    try {
+      result = await fetchTicket(roomId);
+    } catch {
+      // A server action can throw in the browser (network drop, redeploy); report it rather than stall.
+      result = { success: false, error: "Could not get a room ticket" };
+    }
     if (destroyed) {
       return;
     }
@@ -68,8 +76,12 @@ export function connectRoom({
   }
 
   provider.on("status", ({ status }: { status: ConnectionStatus }) => onStatus?.(status));
-  provider.on("connection-close", () => {
-    if (destroyed || !provider.shouldConnect || expiresAt - now() > TICKET_REFRESH_MARGIN_SECONDS) {
+  provider.on("connection-close", (event: CloseEvent | null) => {
+    // The server's clock decides expiry, so its close code wins over the expiry this client last saw.
+    const expired =
+      event?.code === TICKET_EXPIRED_CLOSE_CODE ||
+      expiresAt - now() <= TICKET_REFRESH_MARGIN_SECONDS;
+    if (destroyed || !provider.shouldConnect || !expired) {
       return;
     }
     // Stop the provider's own reconnect with the stale ticket; reconnect once a new one arrives.

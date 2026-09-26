@@ -1,7 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
-import type { RoomTicketClaims, ServerMessage } from "@collab-editor/shared";
+import {
+  ROOM_TICKET_TTL_SECONDS,
+  type RoomTicketClaims,
+  type ServerMessage,
+  TICKET_EXPIRED_CLOSE_CODE,
+} from "@collab-editor/shared";
 import { WebSocket, WebSocketServer } from "ws";
 import { verifyRoomTicket } from "./auth/ticket";
 import { parseClientMessage } from "./handlers/messages";
@@ -147,6 +152,18 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     room.state.addPeer(peer);
     log.info("client joined");
 
+    // A socket lives no longer than its ticket, so a member removed from the room loses access within
+    // one ticket lifetime: the client must fetch a fresh ticket to reconnect. `exp` comes from the web
+    // app's clock, so the delay is also capped at the ticket TTL in case that clock runs ahead.
+    const expiresInMs = Math.min(ROOM_TICKET_TTL_SECONDS * 1000, claims.exp * 1000 - Date.now());
+    const expiryTimer = setTimeout(
+      () => {
+        log.info("ticket expired, closing connection");
+        ws.close(TICKET_EXPIRED_CLOSE_CODE, "ticket expired");
+      },
+      Math.max(0, expiresInMs),
+    );
+
     const limiter = createRateLimiter(rateLimit);
     const byteLimiter = createRateLimiter(byteRateLimit);
     ws.on("message", (raw, isBinary) => {
@@ -188,6 +205,7 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     });
     ws.on("error", (error) => log.warn({ err: error }, "socket error"));
     ws.on("close", () => {
+      clearTimeout(expiryTimer);
       room.state.removePeer(peer);
       rooms.leave(roomId, peer);
       log.info("client left");

@@ -41,5 +41,27 @@ The last consequence above came true: the Auth.js session cookie is `httpOnly`, 
 
 **Consequences.**
 - `WS_TICKET_SECRET` must be identical in the web app and the WS server and rotated together; `AUTH_SECRET` stays in the web app only.
-- Removing a member takes effect for new connections within 5 minutes; an open socket stays connected until it closes (revocation of live sockets is out of scope).
+- Removing a member takes effect for new connections within 5 minutes; an open socket stays connected until it closes (revocation of live sockets is out of scope). Superseded by the next addendum: open sockets are now closed at ticket expiry.
 - The client must fetch a fresh ticket before each (re)connect; Phase 5 wires this into the y-websocket provider.
+
+## Addendum (2026-09-26, #18): sockets close when their ticket expires
+
+The ticket was checked only on upgrade, so a socket outlived its ticket and a removed member kept a live
+connection indefinitely.
+
+**Decision.**
+- The WS server closes each socket when its ticket's `exp` passes, with the application close code
+  `4001` and reason `ticket expired` (`TICKET_EXPIRED_CLOSE_CODE` in `@collab-editor/shared`).
+- The web client (`apps/web/lib/yjs/provider.ts`) treats `4001` as "fetch a fresh ticket via
+  `getRoomTicket` and reconnect". The `Y.Doc` is kept, so local edits resync through Yjs.
+- Membership revocation is **not** pushed from the web app to the WS server. A removed member is refused
+  the fresh ticket, so revocation takes effect within one ticket lifetime (at most 5 minutes).
+
+**Consequences.**
+- Every connected member reconnects about every 5 minutes: one ticket request plus a Yjs sync-step
+  exchange of state vectors and missing updates, with no lost edits.
+- Clock skew between the web app and the WS server only moves the close earlier; the server caps the
+  delay at the ticket TTL, so a web-app clock running ahead cannot stretch the 5-minute bound. The
+  client refreshes on `4001` regardless of the expiry it saw, so skew cannot cause a stale-ticket loop.
+- Pushing revocations (immediate removal) would need a web-app → WS-server channel; it can be revisited
+  if a 5-minute window becomes too long.

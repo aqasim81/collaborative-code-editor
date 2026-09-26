@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current Phase
-Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence before broadcast. Follow-ups done: #16/#21 (the client-boundary test walks the import graph) and #22 (per-connection byte budget). Next: #18, then #19 and Phase 6 (presence and cursor tracking, #9).
+Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence before broadcast. Follow-ups done: #16/#21 (the client-boundary test walks the import graph), #22 (per-connection byte budget) and #18 (sockets close at ticket expiry). Next: #19, then Phase 6 (presence and cursor tracking, #9).
 
 ## Accomplishments
 - [x] Project spec refined and validated
@@ -15,6 +15,7 @@ Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence
 - [x] Phase 3: CodeMirror 6 editor on `/room/[id]` (members only, 404 otherwise), on-demand grammars for 10 languages, language toolbar, undo/redo/select-all/search, dev `db:seed` (#6). Layout, highlighting switches (JS → Python → JSON), shortcuts, resize and the non-member 404 checked in a browser
 - [x] Phase 5: Yjs sync between the editor and the WS server on `y-protocols` (ADR 0002), updates stored in LevelDB before broadcast, rooms restored after restart, ticket refresh on reconnect, awareness in memory only (#8). Checked in a browser: two tabs sync, content survives a WS server restart with no clients connected, tabs converge after offline edits, undo/redo still work
 - [x] WS connections have a byte budget (16 MiB burst, 1 MiB/s) alongside the message budget; a byte flood is closed with 1008, a 10K-line first sync is not (#22)
+- [x] Sockets close with 4001 when their room ticket expires; the client fetches a fresh ticket and reconnects without losing edits, so a removed member loses access within 5 minutes (#18)
 - [x] Client-boundary invariant test follows relative, directive-less and transitive imports from every client component (#16, #21)
 - [x] Phase 4: WS server (`ws` + pino) with HS256 room tickets issued by the web app after a membership check (ADR 0001 addendum), room manager with grace-period cleanup, Zod-validated and rate-limited messages, `GET /health`, graceful shutdown (#7). `/health` and the 401 on a ticketless upgrade checked against the dev server
 
@@ -43,5 +44,5 @@ pnpm --filter @collab-editor/ws-server rebuild leveldown
 
 ## Next Steps
 1. Add `WS_TICKET_SECRET` (32+ characters, e.g. `openssl rand -hex 32`) to `apps/web/.env` if it is not there yet; local `pnpm dev` and `pnpm build` need it
-2. `implement #18`, then `implement #19` — WS follow-ups (ticket expiry, upgrade rate limit and ticket header)
+2. `implement #19` — WS follow-up (upgrade rate limit and ticket header)
 3. `implement #9` — Phase 6: presence and cursor tracking on the awareness groundwork
