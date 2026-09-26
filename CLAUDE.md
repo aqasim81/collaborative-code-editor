@@ -1,4 +1,8 @@
-# Collaborative Code Editor
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Collaborative Code Editor
 
 Real-time collaborative code editor where multiple users simultaneously edit a single shared document with live cursor tracking, conflict-free merging via CRDTs, and syntax highlighting.
 
@@ -6,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 6 complete — presence and cursors (#9): y-codemirror.next draws remote carets and selections from the room's awareness, `components/editor/cursor-layer.ts` names each caret for 3 s after it moves, `components/room/presence-list.tsx` lists everyone once, and the toolbar shows connection status. The WS server replaces every awareness `user` with the ticket identity and allows one presence per connection (#32, ADR 0002 addendum), and pings connections to drop dead ones (#33). Before that, Phase 5: the room editor is bound to a shared Yjs document synced through the WS server, which speaks the y-websocket protocol on `y-protocols`, validates every frame and stores each update in LevelDB (`WS_PERSISTENCE_DIR`) before broadcasting it (ADR 0002). Room tickets (ADR 0001 addendum) are refreshed before a reconnect. Local DB: `docker compose up -d` (port 5434); dev seed creates `/room/seed-room`. The Invariant 6 test walks the client import graph (#16, #21); each WS connection has a byte budget as well as a message budget (#22); sockets close with 4001 at ticket expiry and the client reconnects with a fresh ticket (#18); the ticket travels in `Sec-WebSocket-Protocol`, never the URL, and upgrades are rate-limited per IP (#19). Next: Phase 7 (room management, #10).
+Phase 6 (presence and cursors, #9) complete. Next: Phase 7 (room management and polish, #10). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 
@@ -19,7 +23,7 @@ Phase 6 complete — presence and cursors (#9): y-codemirror.next draws remote c
 | Code editor | CodeMirror 6 | 6.x |
 | CRDT | Yjs | 13.x |
 | Yjs ↔ Editor | y-codemirror.next | latest |
-| Yjs ↔ WebSocket | y-websocket | latest |
+| Yjs ↔ WebSocket | y-websocket (client provider only; server uses y-protocols + lib0) | 2.x |
 | WebSocket server | ws (Node.js) | 8.x |
 | Document persistence | LevelDB (y-leveldb) | latest |
 | Auth | Auth.js v5 (JWT) | 5.x |
@@ -45,12 +49,13 @@ collaborative-code-editor/
 │   │   ├── prisma/             # Schema + migrations
 │   │   └── __tests__/          # Vitest tests
 │   └── ws-server/              # Custom WebSocket server
-│       ├── src/                # Server source (rooms/, auth/, persistence/, handlers/)
+│       ├── src/                # Server source (auth/, sync/, rooms/, persistence/, handlers/)
 │       └── __tests__/          # Vitest tests
 ├── packages/
 │   └── shared/                 # Shared TypeScript types
-├── docs/                       # Living documentation (committed)
-├── plans/                      # PRD, implementation plan, phases (gitignored)
+├── docs/                       # Living docs + ADRs in docs/adr/ (committed)
+├── intent/, specs/             # Artifact chain per change (committed)
+├── plans/                      # PRD, implementation plan, plans/changes/ (gitignored)
 ├── turbo.json                  # Turborepo config
 ├── biome.json                  # Biome linter/formatter
 └── .github/workflows/ci.yml   # CI pipeline
@@ -60,38 +65,63 @@ collaborative-code-editor/
 
 ```bash
 # Development
-pnpm dev                    # Start all apps (Turbopack + WS server)
+pnpm dev                    # Start all apps (Next.js on Turbopack + WS server via tsx watch)
+docker compose up -d        # Postgres 16 on localhost:5434
+cp .env.example apps/web/.env   # one env file: the WS server dev script also reads ../web/.env
+pnpm --filter @collab-editor/web db:migrate   # also db:deploy, db:studio
+pnpm --filter @collab-editor/web db:seed      # dev seed; creates /room/seed-room
 
 # Quality
 pnpm lint                   # Biome check across workspace
 pnpm lint:fix               # Biome auto-fix
 pnpm format                 # Biome format (write)
-pnpm format:check           # Biome format (check only)
-pnpm check:ci               # Biome check (CI mode, no writes)
 pnpm type-check             # TypeScript check across all apps
 
 # Testing
 pnpm test                   # Run all tests
 pnpm test:coverage          # Run tests with coverage enforcement (80%)
+pnpm --filter @collab-editor/ws-server exec vitest run __tests__/sync/sync-room.test.ts   # one file
+pnpm --filter @collab-editor/web exec vitest run __tests__/lib/rooms.test.ts -t "<name>"  # one case
+pnpm --filter @collab-editor/web test:watch   # watch mode
 
 # Validation — the single gate (hooks, CI and Claude all call this)
 make verify                 # wraps pnpm validate: lint + type-check + test:coverage
                             # healthy output ends with: VERIFY OK
 
-# Build
-pnpm build                  # Build all apps
+# Build / tooling
+pnpm build                  # Build all apps (ws-server bundles with tsup)
+make doctor                 # checks node, pnpm, jq, git, lefthook, gitleaks
+lefthook install            # once after cloning
+pnpm --filter @collab-editor/ws-server rebuild leveldown   # if the native build was skipped (macOS arm64)
 ```
 
 ## Architecture
 
-Three-component system: Web App (Next.js) + WebSocket Server (Node.js) + Shared Types package.
+Three packages: `apps/web` (Next.js), `apps/ws-server` (Node `ws`), `packages/shared` (types, close codes,
+`userColor()`; consumed as TS source, no build step).
 
-- **Web app** owns authentication (Auth.js + GitHub OAuth), room CRUD (Prisma), and UI (CodeMirror 6)
-- **WS server** owns real-time sync (Yjs + y-websocket), document persistence (LevelDB), room lifecycle
-- JWT strategy allows WS server to verify auth without database access
-- Yjs CRDT handles conflict-free merging; awareness protocol handles cursors/presence
+- **Web app** owns authentication (Auth.js + GitHub OAuth, JWT sessions), rooms and membership (Prisma), and the UI (CodeMirror 6).
+- **WS server** owns real-time sync, document persistence (LevelDB) and room lifecycle. It never touches the database.
 
-See `docs/architecture.md` for full diagrams and data flow.
+**Joining a room (read across several files):**
+1. `components/room/room-provider.tsx` calls the `getRoomTicket` server action (`actions/room-ticket.ts`), which
+   checks membership and signs a short-lived HS256 room ticket (`lib/ws-ticket.ts`, `WS_TICKET_SECRET`; ADR 0001).
+2. `lib/yjs/provider.ts` wraps y-websocket's `WebsocketProvider`: the ticket goes in `Sec-WebSocket-Protocol`
+   (never the URL), BroadcastChannel is disabled so every edit goes through the server, and a fresh ticket is
+   fetched before each reconnect.
+3. `ws-server/src/server.ts` handles the upgrade: per-IP upgrade limit (429 before any ticket check), ticket
+   verification (`src/auth/ticket.ts`), per-connection message and byte budgets (1008), 30 s ping heartbeat.
+4. The server does **not** use y-websocket's server utils (ADR 0002). `src/sync/protocol.ts` decodes and
+   validates a whole frame before anything is applied (1003 otherwise). `src/sync/sync-room.ts` holds one
+   `Y.Doc` + `Awareness` per room and appends each update to LevelDB (`src/persistence/document-store.ts`)
+   *before* broadcasting it. A storage failure closes the room with 1011. `src/rooms/room-manager.ts` tears
+   rooms down after a grace period.
+5. Presence: the server replaces every awareness `user` with the ticket identity and binds one client id per
+   connection. A taken id closes with 4002 and the client picks a new id (ADR 0002 addendum). An expired ticket
+   closes with 4001 and the client reconnects with a new ticket.
+
+Entry point: `src/index.ts` → `src/main.ts` (env via Zod, LevelDB open, start, SIGINT/SIGTERM shutdown).
+See `docs/architecture.md` and `docs/adr/` for diagrams and decisions.
 
 ## Coding Conventions
 
@@ -116,10 +146,12 @@ See `docs/architecture.md` for full diagrams and data flow.
 
 - **Framework:** Vitest with jsdom (web app), Vitest (WS server)
 - **Coverage threshold:** 80% lines/functions/branches/statements (enforced in CI)
-- **Test location:** `__tests__/` directory in each app
-- **Naming:** `*.test.ts` / `*.test.tsx`
-- **Focus:** Test business logic and behavior, not implementation details
-- **Mocks:** Shared helpers in `__tests__/helpers/`
+- **Test location:** `__tests__/` in each app, mirroring the source path; `*.test.ts` / `*.test.tsx`
+- **Helpers:** `apps/ws-server/__tests__/helpers/` (sockets, tickets, stores, Yjs clients, logger)
+- **Key suites:** `apps/ws-server/__tests__/collaboration.test.ts` runs the real y-websocket provider against
+  the server (protocol drift); `apps/web/__tests__/invariants/client-boundary.test.ts` walks the client import graph (Invariant 6)
+- **Harness guards:** `.claude/protected-paths.txt` blocks edits to `apps/web/components/ui/*` and
+  `apps/web/prisma/migrations/*`; with `CLAUDE_FIX_MODE=1` test files are read-only
 - **CI:** GitHub Actions runs `make verify`, then build
 
 ## Security
@@ -158,26 +190,8 @@ See `docs/architecture.md` for full diagrams and data flow.
 
 ## Session Workflow
 
-### Starting a Session
-1. Read this CLAUDE.md
-2. Read `docs/status.md` for current state
-3. Run `/phase-next` to continue development (or `/pm` for autonomous management)
-
-### During Development
-- **One task per conversation** — break large features into smaller chunks
-- **Use `/clear` between major tasks** — reset context to prevent quality degradation
-- **Use `/compact`** when context is long but you need continuity
-- **Commit after each logical chunk** — never let a session run without committing
-
-### Development Workflows
-- **Single-feature flow:** Research → Plan → Implement → Test
-- **Issue-based development:** Use GitHub issues as source of truth
-- **Parallel work:** Use git worktrees: `git worktree add ../feature-name feat/feature-name`
-
-### End of Session
-- Update `docs/changelog.md` with changes made
-- Update `docs/status.md` with current state and next steps
-- Ensure all changes are committed and pushed
+- **Start:** read `docs/status.md`, then `/phase-next` (or `/pm`). Issues are the source of truth for work.
+- **End:** update `docs/changelog.md` and `docs/status.md`.
 
 ## References
 
