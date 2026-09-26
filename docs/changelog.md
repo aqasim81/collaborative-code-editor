@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Client-boundary check (#16, #21)
+- The Invariant 6 test walks the import graph from every `"use client"` module, resolving `./`, `../` and `@/` specifiers, and fails if any reached module is server-only (the listed `lib/` modules or any module importing `server-only`); a violation is reported as the import chain
+- Static, side-effect, re-export and dynamic imports are followed; type-only imports and the imports of `"use server"` modules are not
+- A module that reads a non-`NEXT_PUBLIC_` environment variable directly also counts as server-only; `.js` specifiers resolve to their `.ts` files; a local import that does not resolve fails the check
+- Fixture cases cover relative, directive-less and transitive server-only imports; a reachability assertion keeps the walk from passing silently
+- Server-only packages and server-to-client props are not covered yet (#24)
+
 ### Phase 5 — Real-Time Collaboration (#8)
 - The room editor is bound to the room's shared Yjs text with y-codemirror.next; undo and redo use `Y.UndoManager`, so a user only undoes their own edits
 - `RoomProvider` creates the Yjs document and a `WebsocketProvider` per room; a room ticket is fetched before connecting and refreshed before a reconnect when it is about to expire; a refused ticket is shown in the room

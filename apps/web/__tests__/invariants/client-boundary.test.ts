@@ -1,66 +1,255 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, posix, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Invariant 6: secrets stay out of the client. Client components must not import
-// modules that read server environment variables or hold server-only clients.
-const SERVER_ONLY_MODULES = [
-  "@/lib/env",
-  "@/lib/auth",
-  "@/lib/auth.config",
-  "@/lib/prisma",
-  "@/lib/ws-ticket",
-];
-const SOURCE_DIRS = ["app", "components", "lib", "actions"];
+// Invariant 6: secrets stay out of the client. Every module that ends up in the client bundle must not
+// be a server-only module. A module is client code when it has "use client" or when client code imports
+// it, directly or transitively, so the check walks the import graph from each "use client" entry point.
+// Paths are relative to the web app root, with forward slashes.
+const SERVER_ONLY_MODULES = new Set([
+  "lib/env.ts",
+  "lib/auth.ts",
+  "lib/auth.config.ts",
+  "lib/prisma.ts",
+  "lib/rooms.ts",
+  "lib/ws-ticket.ts",
+]);
 const APP_ROOT = join(__dirname, "..", "..");
+// Skipped when reading the app from disk: dependencies, build output, tests, and (at the root only)
+// the Prisma schema and seed.
+const IGNORED_DIRS = new Set(["node_modules", ".next", ".turbo", "coverage", "__tests__"]);
+const IGNORED_ROOT_DIRS = new Set(["prisma"]);
+const RESOLVE_SUFFIXES = ["", ".ts", ".tsx", "/index.ts", "/index.tsx"];
+// Local imports of non-code assets (e.g. "./globals.css") are not modules in the graph.
+const ASSET_SPECIFIER = /\.(css|scss|svg|png|jpe?g|gif|webp|ico|woff2?)$/;
 
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+type SourceFiles = ReadonlyMap<string, string>;
+
+function readSourceFiles(dir: string): [string, string][] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry): [string, string][] => {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
-      return sourceFiles(path);
+      const ignored =
+        IGNORED_DIRS.has(entry.name) || (dir === APP_ROOT && IGNORED_ROOT_DIRS.has(entry.name));
+      return ignored ? [] : readSourceFiles(path);
     }
-    return /\.(ts|tsx)$/.test(entry.name) ? [path] : [];
+    if (!/\.(ts|tsx)$/.test(entry.name) || entry.name.endsWith(".d.ts")) {
+      return [];
+    }
+    return [[relative(APP_ROOT, path).split(sep).join("/"), readFileSync(path, "utf8")]];
   });
 }
 
-function isClientModule(source: string): boolean {
-  return /^\s*["']use client["']/.test(source);
+function hasDirective(source: string, directive: string): boolean {
+  return new RegExp(`^(?:\\s|//[^\\n]*\\n|/\\*[\\s\\S]*?\\*/)*["']${directive}["']`).test(source);
 }
 
-function serverImports(source: string): string[] {
-  return SERVER_ONLY_MODULES.filter((mod) =>
-    new RegExp(`from\\s+["']${mod.replace(/[.]/g, "\\.")}["']`).test(source),
+// Server-only: a listed module, a module marked with `import "server-only"`, or a module that reads a
+// non-public environment variable directly.
+function isServerOnly(path: string, source: string): boolean {
+  return (
+    SERVER_ONLY_MODULES.has(path) ||
+    /\bimport\s*["']server-only["']/.test(source) ||
+    /\bprocess\.env(?:\.(?!NEXT_PUBLIC_)\w|\[)/.test(source)
   );
 }
 
-function findViolations(files: { path: string; source: string }[]): string[] {
-  return files
-    .filter((file) => isClientModule(file.source))
-    .flatMap((file) => serverImports(file.source).map((mod) => `${file.path} imports ${mod}`));
+// Specifiers of imports that survive compilation. `import type` / `export type` are erased and never
+// reach the bundle, so they are not edges. Comments are stripped first.
+function importSpecifiers(source: string): string[] {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const patterns = [
+    /\bimport\s+(?!type\s)[^"';]*?\bfrom\s*["']([^"']+)["']/g,
+    /\bimport\s*["']([^"']+)["']/g,
+    /\bexport\s+(?!type\s)[^"';]*?\bfrom\s*["']([^"']+)["']/g,
+    /\bimport\(\s*["']([^"']+)["']\s*\)/g,
+  ];
+  return patterns.flatMap((pattern) =>
+    [...code.matchAll(pattern)].flatMap((match) => (match[1] ? [match[1]] : [])),
+  );
+}
+
+// Resolves "./x", "../x" and "@/x" (with or without a .js/.jsx extension) to a file in the app.
+// Returns null for package imports and assets, undefined for a local specifier that does not resolve.
+function resolveSpecifier(
+  from: string,
+  specifier: string,
+  files: SourceFiles,
+): string | null | undefined {
+  let base: string;
+  if (specifier.startsWith("@/")) {
+    base = specifier.slice(2);
+  } else if (specifier.startsWith("./") || specifier.startsWith("../")) {
+    base = posix.join(posix.dirname(from), specifier);
+  } else {
+    return null;
+  }
+  if (ASSET_SPECIFIER.test(base)) {
+    return null;
+  }
+  const stripped = base.replace(/\.jsx?$/, "");
+  return RESOLVE_SUFFIXES.map((suffix) => posix.normalize(stripped + suffix)).find((candidate) =>
+    files.has(candidate),
+  );
+}
+
+// Breadth-first walk from every "use client" entry point. Returns the modules reached and the
+// violations, each as the import chain from the entry. A local import that cannot be resolved is a
+// violation too, so a missed file can never make the check pass silently.
+function walkClientGraph(files: SourceFiles): { reached: Set<string>; violations: string[] } {
+  const reached = new Set<string>();
+  const violations: string[] = [];
+  const entries = [...files].filter(([, source]) => hasDirective(source, "use client"));
+
+  for (const [entry] of entries) {
+    const visited = new Set<string>([entry]);
+    const queue: string[][] = [[entry]];
+    while (queue.length > 0) {
+      const chain = queue.shift() ?? [];
+      const current = chain[chain.length - 1] ?? "";
+      const source = files.get(current) ?? "";
+      reached.add(current);
+      if (isServerOnly(current, source)) {
+        violations.push(chain.join(" -> "));
+        continue;
+      }
+      // A "use server" module reaches the client only as action references; its imports stay on the server.
+      if (current !== entry && hasDirective(source, "use server")) {
+        continue;
+      }
+      for (const specifier of importSpecifiers(source)) {
+        const target = resolveSpecifier(current, specifier, files);
+        if (target === undefined) {
+          violations.push(`${chain.join(" -> ")} -> unresolved "${specifier}"`);
+        } else if (target !== null && !visited.has(target)) {
+          visited.add(target);
+          queue.push([...chain, target]);
+        }
+      }
+    }
+  }
+  return { reached, violations };
+}
+
+function findViolations(files: SourceFiles): string[] {
+  return walkClientGraph(files).violations;
 }
 
 describe("client boundary (Invariant 6)", () => {
-  it("detects a client component importing a server-only module", () => {
-    const violations = findViolations([
-      { path: "bad.tsx", source: '"use client";\nimport { env } from "@/lib/env";\n' },
-      { path: "server.tsx", source: 'import { auth } from "@/lib/auth";\n' },
-      { path: "ok.tsx", source: "'use client';\nimport { cn } from \"@/lib/utils\";\n" },
+  const OK_UTILS = 'export const cn = (...c: string[]) => c.join(" ");\n';
+  const ENV = "export const env = { SECRET: process.env.SECRET };\n";
+
+  it("flags an @/ server-only import in a client component", () => {
+    const files = new Map([
+      ["components/bad.tsx", '"use client";\nimport { env } from "@/lib/env";\n'],
+      ["components/ok.tsx", "'use client';\nimport { cn } from \"@/lib/utils\";\n"],
+      ["app/page.tsx", 'import { auth } from "@/lib/auth";\n'],
+      ["lib/env.ts", ENV],
+      ["lib/auth.ts", "export const auth = () => null;\n"],
+      ["lib/utils.ts", OK_UTILS],
     ]);
 
-    expect(violations).toEqual(["bad.tsx imports @/lib/env"]);
+    expect(findViolations(files)).toEqual(["components/bad.tsx -> lib/env.ts"]);
   });
 
-  it("no client component in the app imports a server-only module", () => {
-    const files = SOURCE_DIRS.flatMap((dir) => {
-      try {
-        return sourceFiles(join(APP_ROOT, dir));
-      } catch {
-        return [];
-      }
-    }).map((path) => ({ path: relative(APP_ROOT, path), source: readFileSync(path, "utf8") }));
+  it("flags a relative server-only import in a client component (#16)", () => {
+    const files = new Map([
+      ["components/editor/bad.tsx", '"use client";\nimport { env } from "../../lib/env";\n'],
+      ["lib/env.ts", ENV],
+    ]);
 
-    expect(files.length).toBeGreaterThan(0);
+    expect(findViolations(files)).toEqual(["components/editor/bad.tsx -> lib/env.ts"]);
+  });
+
+  it("flags a server-only import in a directive-less module a client component imports (#16, #21)", () => {
+    const files = new Map([
+      [
+        "components/editor/room-editor.tsx",
+        '"use client";\nimport { Toolbar } from "./toolbar";\n',
+      ],
+      [
+        "components/editor/toolbar.tsx",
+        'import { prisma } from "@/lib/prisma";\nexport const Toolbar = 1;\n',
+      ],
+      ["lib/prisma.ts", "export const prisma = {};\n"],
+    ]);
+
+    expect(findViolations(files)).toEqual([
+      "components/editor/room-editor.tsx -> components/editor/toolbar.tsx -> lib/prisma.ts",
+    ]);
+  });
+
+  it("flags a server-only import reached transitively through several modules (#21)", () => {
+    const files = new Map([
+      [
+        "components/room/room-provider.tsx",
+        '"use client";\nimport { connect } from "@/lib/yjs";\n',
+      ],
+      ["lib/yjs/index.ts", 'export { connect } from "./provider";\n'],
+      [
+        "lib/yjs/provider.ts",
+        'import { signRoomTicket } from "../ws-ticket";\nexport const connect = 1;\n',
+      ],
+      ["lib/ws-ticket.ts", "export const signRoomTicket = 1;\n"],
+    ]);
+
+    expect(findViolations(files)).toEqual([
+      "components/room/room-provider.tsx -> lib/yjs/index.ts -> lib/yjs/provider.ts -> lib/ws-ticket.ts",
+    ]);
+  });
+
+  it('flags a module marked with import "server-only" and dynamic imports', () => {
+    const files = new Map([
+      ["components/lazy.tsx", '"use client";\nconst m = () => import("../lib/secret");\n'],
+      ["lib/secret.ts", 'import "server-only";\nexport const key = 1;\n'],
+    ]);
+
+    expect(findViolations(files)).toEqual(["components/lazy.tsx -> lib/secret.ts"]);
+  });
+
+  it('does not follow type-only imports or the imports of a "use server" module', () => {
+    const files = new Map([
+      [
+        "components/room.tsx",
+        '"use client";\nimport { getTicket } from "@/actions/ticket";\nimport type { Env } from "@/lib/env";\n',
+      ],
+      [
+        "actions/ticket.ts",
+        '"use server";\nimport { env } from "@/lib/env";\nexport async function getTicket() {}\n',
+      ],
+      ["lib/env.ts", ENV],
+    ]);
+
     expect(findViolations(files)).toEqual([]);
+  });
+
+  it("flags direct non-public env reads, .js specifiers and unresolved local imports", () => {
+    const files = new Map([
+      [
+        "components/a.tsx",
+        '"use client";\nimport {x}from"./helper.js";\nimport "./globals.css";\nimport { y } from "./missing";\n',
+      ],
+      ["components/helper.ts", "export const x = process.env.AUTH_SECRET;\n"],
+      [
+        "components/public.tsx",
+        '"use client";\nexport const u = process.env.NEXT_PUBLIC_WS_URL;\n',
+      ],
+    ]);
+
+    expect(findViolations(files)).toEqual([
+      'components/a.tsx -> unresolved "./missing"',
+      "components/a.tsx -> components/helper.ts",
+    ]);
+  });
+
+  it("no module reachable from a client component in the app is server-only", () => {
+    const files = new Map(readSourceFiles(APP_ROOT));
+    const { reached, violations } = walkClientGraph(files);
+
+    // Guard against a walk that silently stops: directive-less modules imported by client components
+    // must be part of the client graph.
+    expect(reached).toContain("components/editor/toolbar.tsx");
+    expect(reached).toContain("lib/yjs/provider.ts");
+    expect(violations).toEqual([]);
   });
 });
