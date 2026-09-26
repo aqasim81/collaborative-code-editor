@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
+import type { WebSocket } from "ws";
 import * as Y from "yjs";
 import { type DocumentStore, openLevelDbStore } from "../src/persistence/document-store";
 import { type RunningServer, startServer } from "../src/server";
 import { silentLogger } from "./helpers/logger";
-import { waitFor } from "./helpers/sockets";
+import { provokeUnansweredClose, waitFor } from "./helpers/sockets";
 import { createMemoryStore, storedText, tempDir } from "./helpers/stores";
 import { TEST_SECRET, type TicketOverrides } from "./helpers/tickets";
 import { connectYClient, synced, type YClient } from "./helpers/yjs-clients";
@@ -260,5 +261,49 @@ describe("presence (Invariant 5)", () => {
       id: "user-2",
       name: "Mallory",
     });
+  });
+
+  it("drops a client's presence as soon as the server closes it, even if it never answers (#28)", async () => {
+    const server = await start();
+    cleanups.push(() => server.close());
+    const a = await client(server);
+    const b = await client(server);
+    const aId = a.doc.clientID;
+    a.provider.awareness.setLocalStateField("mark", 1);
+    await waitFor(() => b.provider.awareness.getStates().get(aId)?.mark === 1);
+
+    a.provider.shouldConnect = false;
+    const socket = a.provider.ws as unknown as WebSocket;
+    cleanups.push(() => socket.terminate());
+    provokeUnansweredClose(socket);
+
+    await waitFor(() => !b.provider.awareness.getStates().has(aId));
+    expect(server.rooms.get("room-1")?.state.awareness.getStates().has(aId)).toBe(false);
+  });
+
+  it("closes every client and drops presence when storage fails (#28)", async () => {
+    const store = createMemoryStore();
+    const server = await start(store);
+    cleanups.push(() => server.close());
+    const a = await client(server);
+    const b = await client(server);
+    const ids = [a.doc.clientID, b.doc.clientID];
+    a.provider.awareness.setLocalStateField("mark", 1);
+    b.provider.awareness.setLocalStateField("mark", 1);
+    const room = server.rooms.get("room-1")?.state;
+    await waitFor(() => ids.every((id) => room?.awareness.getStates().get(id)?.mark === 1));
+
+    store.failAppend = true;
+    a.text.insert(0, "lost");
+    // Neither client answers the 1011 close.
+    for (const c of [a, b]) {
+      c.provider.shouldConnect = false;
+      const socket = c.provider.ws as unknown as WebSocket;
+      cleanups.push(() => socket.terminate());
+      socket.pause();
+    }
+
+    await waitFor(() => server.rooms.get("room-1")?.state !== room);
+    await waitFor(() => ids.every((id) => !room?.awareness.getStates().has(id)));
   });
 });

@@ -70,8 +70,8 @@ presences. Decision:
   a presence that exists, so no metadata is kept for ids the room has never had.
 - Another connection of the same user may take an id over: a client whose socket died comes back on a
   new one before the server notices the old one is gone. A ping heartbeat (#33) terminates such sockets.
-- The connection that last set an id's state controls it and clears it when it closes; any removal,
-  including the server's 30 s timeout sweep, releases that control.
+- The connection that last set an id's state controls it and clears it when it closes or the server starts
+  closing it (#28); any removal, including the server's 30 s timeout sweep, releases that control.
 - Clients re-announce their presence with a newer clock on every connect, because the server and other
   clients keep the old clock after a disconnect and would ignore a same-clock resend.
 

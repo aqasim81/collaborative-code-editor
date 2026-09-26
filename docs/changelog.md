@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Presence cleared when the server closes a connection (#28)
+- Every close the WS server starts (1003 invalid frame, 1008 rate or byte limit, 4001 ticket expired, 1011 storage failure, 4002 presence id taken) drops the peer's presence at once, instead of when the client answers the close frame; a client that never answered stayed visible to everyone for `ws`'s 30 s close timeout
+- A client that ignores the close handshake is terminated after 5 s, as on shutdown; `shutdownTimeoutMs` is now `closeTimeoutMs` and covers both
+- Tests: a client that withholds its close answer after an invalid frame, both clients of a room whose storage fails, and termination after `closeTimeoutMs`
+
 ### Phase 6 — Presence and cursors (#9)
 - Remote carets and selections in each user's colour (y-codemirror.next with the room's awareness); a name label shows above a remote caret for 3 s after it moves or its user joins, and on hover
 - A presence sidebar lists everyone in the room once (several tabs make one entry), this user first and marked, with GitHub avatar or initials ringed in their colour; it updates on join and leave but not on cursor moves

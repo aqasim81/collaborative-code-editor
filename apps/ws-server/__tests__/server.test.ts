@@ -12,7 +12,14 @@ import type { WebSocket } from "ws";
 import * as Y from "yjs";
 import { type RunningServer, type ServerOptions, startServer } from "../src/server";
 import { silentLogger } from "./helpers/logger";
-import { closed, expectUpgradeRejected, nextMessage, openClient, waitFor } from "./helpers/sockets";
+import {
+  closed,
+  expectUpgradeRejected,
+  nextMessage,
+  openClient,
+  provokeUnansweredClose,
+  waitFor,
+} from "./helpers/sockets";
 import { createMemoryStore } from "./helpers/stores";
 import { signTicket, TEST_SECRET } from "./helpers/tickets";
 
@@ -457,6 +464,24 @@ describe("ws server", () => {
     });
   });
 
+  describe("server-initiated close (#28)", () => {
+    it("terminates a client that ignores the close handshake after closeTimeoutMs", async () => {
+      await server.close();
+      server = await start({ closeTimeoutMs: 50 });
+      base = `ws://127.0.0.1:${server.port}`;
+      const ws = await openRoom();
+      await waitFor(() => server.stats().connections === 1);
+
+      provokeUnansweredClose(ws);
+
+      try {
+        await waitFor(() => server.stats().connections === 0);
+      } finally {
+        ws.terminate();
+      }
+    });
+  });
+
   describe("shutdown", () => {
     it("closes every connection gracefully", async () => {
       const clients = await Promise.all([
@@ -478,7 +503,7 @@ describe("ws server", () => {
 
     it("terminates a client that ignores the close handshake", async () => {
       await server.close();
-      server = await start({ shutdownTimeoutMs: 50 });
+      server = await start({ closeTimeoutMs: 50 });
       base = `ws://127.0.0.1:${server.port}`;
       const ws = await openRoom();
       await waitFor(() => server.stats().connections === 1);

@@ -60,3 +60,12 @@ export async function waitFor(condition: () => boolean, timeoutMs = 2_000): Prom
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
+
+/**
+ * Sends a frame the server rejects (unknown message type) so it closes the socket, and stops reading so
+ * the close frame is never answered. The caller terminates `ws` when done.
+ */
+export function provokeUnansweredClose(ws: WebSocket): void {
+  ws.send(Uint8Array.of(99));
+  ws.pause();
+}

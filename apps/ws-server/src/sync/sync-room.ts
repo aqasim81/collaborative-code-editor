@@ -23,6 +23,7 @@ export interface Peer {
   /** Who is connected, from the verified ticket: every presence this peer sends is shown as this user. */
   readonly user: PresenceUser;
   send(data: Uint8Array): void;
+  /** Starts closing the connection; the server removes the peer from the room as it does. */
   close(code: number, reason: string): void;
 }
 
@@ -121,7 +122,8 @@ export function createSyncRoom({
     }
     failed = true;
     logger.error({ roomId, reason }, "room storage failed, closing its connections");
-    for (const peer of peers) {
+    // A copy: closing a peer removes it from `peers`.
+    for (const peer of [...peers]) {
       peer.close(STORAGE_FAILURE_CLOSE_CODE, "document storage failed");
     }
     onFailure();
@@ -306,7 +308,10 @@ export function createSyncRoom({
       });
     },
     removePeer(peer) {
-      peers.delete(peer);
+      // Already gone: the server drops a peer when it starts closing it, and again on `close`.
+      if (!peers.delete(peer)) {
+        return;
+      }
       peerIds.delete(peer);
       const controlled = [...owners].filter(([, owner]) => owner === peer).map(([id]) => id);
       if (controlled.length > 0) {

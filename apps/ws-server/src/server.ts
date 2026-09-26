@@ -53,8 +53,8 @@ export interface ServerOptions {
   maxPayloadBytes?: number;
   /** Upgrade attempts per remote IP, checked before any ticket work. */
   upgradeRateLimit?: RateLimitOptions;
-  /** How long shutdown waits for a client's close handshake before terminating it. */
-  shutdownTimeoutMs?: number;
+  /** How long a close the server starts waits for the client's handshake before terminating the socket. */
+  closeTimeoutMs?: number;
   /** Ping interval; a connection that hasn't answered the previous ping by the next one is terminated. */
   heartbeatIntervalMs?: number;
 }
@@ -78,7 +78,7 @@ export interface RunningServer {
 
 // Room ids are cuids today; allow the URL-safe alphabet and nothing that needs decoding.
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
-const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
+const DEFAULT_CLOSE_TIMEOUT_MS = 5_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 
 /** Parses a request target; null for one a client malformed on purpose (e.g. `http://[`). */
@@ -132,7 +132,7 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
       error: `byte budget capacity (${byteRateLimit.capacity}) is below the frame cap (${maxPayload})`,
     };
   }
-  const shutdownTimeoutMs = options.shutdownTimeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
+  const closeTimeoutMs = options.closeTimeoutMs ?? DEFAULT_CLOSE_TIMEOUT_MS;
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
   // Whose awareness client id is whose, per room, for the life of the process: it must outlive a room
   // destroyed while empty, or another member could claim a returning user's id.
@@ -175,6 +175,8 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     handleProtocols: () => ROOM_PROTOCOL,
   });
   let closing = false;
+  // Each open socket's `closeConnection`, so shutdown closes it the same way.
+  const closers = new Map<WebSocket, (code: number, reason: string) => void>();
 
   const stats = (): HealthStats => ({
     status: "ok",
@@ -198,12 +200,27 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
           ws.send(data);
         }
       },
-      close: (code, reason) => ws.close(code, reason),
+      close: closeConnection,
     };
     // Keep this instance: if the room is evicted, a later one with the same id is a different room.
     const room = rooms.join(roomId, peer);
     room.state.addPeer(peer);
     log.info("client joined");
+
+    // Every close the server starts goes through here. The peer's presence goes at once (Invariant 5):
+    // a client that never answers the close frame must not stay visible to the others, and it is
+    // terminated after `closeTimeoutMs` rather than holding its room slot for `ws`'s own 30 s timeout.
+    // A socket the client is already closing gets the same bound; `ws.close` is then a no-op.
+    let closeTimer: ReturnType<typeof setTimeout> | undefined;
+    function closeConnection(code: number, reason: string): void {
+      if (closeTimer !== undefined || ws.readyState === WebSocket.CLOSED) {
+        return;
+      }
+      room.state.removePeer(peer);
+      ws.close(code, reason);
+      closeTimer = setTimeout(() => ws.terminate(), closeTimeoutMs);
+    }
+    closers.set(ws, closeConnection);
 
     // A socket lives no longer than its ticket, so a member removed from the room loses access within
     // one ticket lifetime: the client must fetch a fresh ticket to reconnect. `exp` comes from the web
@@ -212,7 +229,7 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     const expiryTimer = setTimeout(
       () => {
         log.info("ticket expired, closing connection");
-        ws.close(TICKET_EXPIRED_CLOSE_CODE, "ticket expired");
+        closeConnection(TICKET_EXPIRED_CLOSE_CODE, "ticket expired");
       },
       Math.max(0, expiresInMs),
     );
@@ -244,19 +261,19 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
       const data = raw as Buffer;
       if (!limiter.tryConsume()) {
         log.warn("rate limit exceeded, closing connection");
-        ws.close(1008, "rate limit exceeded");
+        closeConnection(1008, "rate limit exceeded");
         return;
       }
       if (!byteLimiter.tryConsume(data.length)) {
         log.warn({ bytes: data.length }, "byte budget exceeded, closing connection");
-        ws.close(1008, "byte budget exceeded");
+        closeConnection(1008, "byte budget exceeded");
         return;
       }
       if (isBinary) {
         const sync = parseSyncMessage(data);
         if (!sync.success) {
           log.debug({ reason: sync.error }, "sync message rejected");
-          ws.close(INVALID_MESSAGE_CLOSE_CODE, "invalid sync message");
+          closeConnection(INVALID_MESSAGE_CLOSE_CODE, "invalid sync message");
           return;
         }
         room.state.handle(peer, sync.data);
@@ -275,7 +292,9 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     ws.on("error", (error) => log.warn({ err: error }, "socket error"));
     ws.on("close", () => {
       clearTimeout(expiryTimer);
+      clearTimeout(closeTimer);
       clearInterval(heartbeat);
+      closers.delete(ws);
       room.state.removePeer(peer);
       rooms.leave(roomId, peer);
       log.info("client left");
@@ -322,12 +341,14 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
         resolve();
         return;
       }
-      const timer = setTimeout(() => ws.terminate(), shutdownTimeoutMs);
-      ws.once("close", () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      ws.close(1001, "server shutting down");
+      ws.once("close", () => resolve());
+      const closeConnection = closers.get(ws);
+      if (closeConnection) {
+        closeConnection(1001, "server shutting down");
+      } else {
+        // Joining its room failed, so it never got a closer; nothing to wait for.
+        ws.terminate();
+      }
     });
   }
 
