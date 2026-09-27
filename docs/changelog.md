@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### /hotfix and /phase-next go through PRs (#4)
+- `/hotfix` merges its PR once `Verify` and `Build` pass (`gh pr update-branch` when refused as behind) and says merging the PR, not a push to `main`, triggers the deploy. The regression test and docs follow-ups land on a `chore/<issue>-hotfix-followup` branch and merge through one PR
+- `/phase-next` branches `feat/phase-<N>-<slug>` before its first commit when on `main`, and always opens the phase PR
+
 ### /release goes through a PR (#3)
 - `/release` cuts `chore/release-vX.Y.Z` from `main` and merges the changelog (with a fresh `[Unreleased]`) and the version bump through a PR, then tags the squash-merge commit and pushes only the tag. The post-release status updates, which record the deploy result, go through a second PR. `/release` no longer pushes to `main`; a hook test keeps tag pushes allowed
 
