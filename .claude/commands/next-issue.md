@@ -17,8 +17,9 @@ session for the next issue (that fresh session is the checklist's `/clear`). Do 
 Run this before picking the issue, and again just before printing `ISSUE <N> DONE` (so follow-ups filed
 during the session are planned too). The rules are the "Intake" section of `plans/issues/README.md`:
 
-- `gh issue list --state open --limit 100 --json number,title`. Every open issue missing from the order table
-  is new (rows under the README's Archive section belong to the old repo and don't count).
+- `gh issue list --state open --limit 100 --json number,title,labels`. Every open issue missing from the order table
+  is new (rows under the README's Archive section belong to the old repo and don't count). Skip issues labelled
+  `owner-task`: they are manual work for the owner. Never plan, queue or work on them.
 - For each new issue, read the code it touches, then write `plans/issues/<N>/implementation-plan.md` and
   `phases/phase-<k>-<name>.md` in the format of the existing folders, and `checklist.md` from
   `plans/issues/_checklist-template.md` (steps 1–6 per phase, issue-end steps 7–15, boxes unticked).
