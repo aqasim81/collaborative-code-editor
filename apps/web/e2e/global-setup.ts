@@ -1,14 +1,11 @@
-// Signs the check in as the seed room's owner without GitHub: mints the Auth.js session cookie the web
-// app would set, from AUTH_SECRET. Local production checks only; nothing here is imported by app code.
+// Signs the check in as the seed room's owner without GitHub (e2e/session.ts). Local production checks
+// only; nothing here is imported by app code.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { FullConfig } from "@playwright/test";
+import type { Cookie, FullConfig } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
-import { encode } from "next-auth/jwt";
 import { SEED_ROOM_ID, SIGNED_OUT_ONLY, STORAGE_STATE } from "./constants";
-
-// The http cookie name; on https Auth.js prefixes it with __Secure-. The check runs on http localhost.
-const SESSION_COOKIE = "authjs.session-token";
+import { mintSessionCookie } from "./session";
 
 const RUN_HINT =
   "Run it as: cd apps/web && node --env-file=.env ./node_modules/.bin/playwright test " +
@@ -22,7 +19,7 @@ async function expectServer(url: string, name: string): Promise<void> {
   }
 }
 
-function writeState(cookies: object[]): void {
+function writeState(cookies: Cookie[]): void {
   mkdirSync(dirname(STORAGE_STATE), { recursive: true });
   writeFileSync(STORAGE_STATE, JSON.stringify({ cookies, origins: [] }));
 }
@@ -53,36 +50,13 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     if (!room) {
       throw new Error("No seed room. Run pnpm --filter @collab-editor/web db:seed first.");
     }
-    const { id, name, image } = room.creator;
-    const value = await encode({
-      token: { id, name, picture: image, sub: id },
-      secret: AUTH_SECRET,
-      salt: SESSION_COOKIE,
-    });
-    // A secret other than the web server's makes a cookie it silently ignores: every signed-in check
-    // would then test the sign-in redirect instead.
-    const session = await fetch(new URL("/api/auth/session", baseURL), {
-      headers: { cookie: `${SESSION_COOKIE}=${value}` },
-    });
-    const body: unknown = await session.json();
-    if (typeof body !== "object" || body === null || !("user" in body)) {
-      throw new Error(
-        `The web app refused the minted session: AUTH_SECRET here differs from the server's. ${RUN_HINT}`,
-      );
+    try {
+      writeState([await mintSessionCookie(room.creator, AUTH_SECRET, baseURL)]);
+    } catch (error) {
+      throw new Error(`${error instanceof Error ? error.message : String(error)} ${RUN_HINT}`, {
+        cause: error,
+      });
     }
-    const { hostname } = new URL(baseURL);
-    writeState([
-      {
-        name: SESSION_COOKIE,
-        value,
-        domain: hostname,
-        path: "/",
-        expires: -1,
-        httpOnly: true,
-        secure: false,
-        sameSite: "Lax",
-      },
-    ]);
   } finally {
     await prisma.$disconnect();
   }

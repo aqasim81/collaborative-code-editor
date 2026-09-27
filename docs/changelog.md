@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Phase 7 — README and demo (#38)
+- `README.md`: pitch, badges, demo GIF, quickstart, features, a Mermaid architecture diagram with the data flow, key decisions linking ADRs 0001–0003, quality and invariants, full setup (GitHub OAuth app, every env variable, sample room, hooks, Apple Silicon `leveldown`, production run, re-recording the demo), status and roadmap. `docs/status.md` points to it for setup
+- `LICENSE` (MIT)
+- Demo GIF (`docs/media/demo.gif`, 960 px, about 12 s): two demo users edit one room side by side, both on line 1 at once. `apps/web/e2e/record-demo.ts` records it without GitHub, signing both in with a minted session cookie
+- `apps/web/e2e/session.ts` mints that cookie for both the production check and the recording; a non-200 from `/api/auth/session` now points at `AUTH_URL` instead of blaming `AUTH_SECRET`
+- `AUTH_URL` is documented as needed by `pnpm start` (README, `.env.example`): a production server otherwise refuses sessions as an untrusted host
+- The README's setup was followed from a fresh clone: install, Postgres, migrate, `pnpm dev`, two users syncing in one room, `make verify`
+
 ### Shell writes to protected paths are blocked (#62)
 - `guard-bash.sh` blocks shell commands that write into `.claude/protected-paths.txt` paths: redirects (`>`, `>>`, `&>`), `tee`, `cp`/`install`/`ln`/`rsync` with a protected destination, `mv`/`rm`/`touch`/`truncate`, `dd of=`, `git rm`/`checkout`/`restore`, `find -delete`, `sed -i`/`perl -i`, and `python`/`node`/`ruby`/`perl` commands that name a protected path; deletes and moves of a parent folder count too. Relative, `./`, absolute and after-`cd` spellings all count, wrappers (`sudo`, `env`, `timeout`) are seen through, and quoted text such as a commit message is data; the parser lives in `.claude/hooks/lib/protected-writes.pl` and runs only when a command names a protected path
 - `prisma migrate` (including `diff --script` into a migration), `shadcn add` and `db:migrate` stay allowed, and so do reads
