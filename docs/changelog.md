@@ -5,8 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### /release goes through a PR (#3)
-- `.claude/commands/release.md` cuts `chore/release-vX.Y.Z` from an up-to-date `main`, commits the changelog and version bump there, and merges them through a PR once `Verify` and `Build` pass (`gh pr update-branch` when the branch falls behind). It then pulls `main`, checks that the last commit is the squash merge and tags that commit; only the tag is pushed
-- The post-release doc updates (§9) go through their own `chore/post-release-vX.Y.Z` PR, since they record the deploy result. No command in `.claude/commands/` pushes to `main` any more; a hook test keeps tag pushes allowed
+- `/release` cuts `chore/release-vX.Y.Z` from `main` and merges the changelog (with a fresh `[Unreleased]`) and the version bump through a PR, then tags the squash-merge commit and pushes only the tag. The post-release status updates, which record the deploy result, go through a second PR. `/release` no longer pushes to `main`; a hook test keeps tag pushes allowed
 
 ### Repository — public, protected main (#1, was #13)
 - `intent/`, `specs/`, `docs/templates/`, `docs/ENGINEERING_WORKFLOW.md` and `docs/REPO_STANDARDS.md` are local and gitignored; the workflow docs say so
