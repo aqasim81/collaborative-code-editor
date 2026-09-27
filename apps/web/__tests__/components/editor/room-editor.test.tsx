@@ -10,6 +10,7 @@ const { room } = vi.hoisted(() => ({
       status: "connected",
       error: null as string | null,
       reloadHint: false,
+      retry: () => undefined,
     },
   },
 }));
@@ -26,8 +27,8 @@ vi.mock("@/components/editor/code-editor", () => ({
   }) => <div data-testid="editor">{`${language}:${text}:${awareness}`}</div>,
 }));
 vi.mock("@/components/room/presence-list", () => ({
-  PresenceList: ({ awareness }: { awareness: string }) => (
-    <div data-testid="presence">{awareness}</div>
+  PresenceList: ({ entries }: { entries: { user: { id: string } }[] }) => (
+    <div data-testid="presence">{entries.map((entry) => entry.user.id).join(",")}</div>
   ),
 }));
 vi.mock("@/components/room/room-provider", () => ({
@@ -47,6 +48,9 @@ vi.mock("@/components/room/room-provider", () => ({
     </div>
   ),
   useRoom: () => room.value,
+}));
+vi.mock("@/lib/yjs/awareness", () => ({
+  usePresence: () => [{ user: { id: "u1" } }, { user: { id: "u2" } }],
 }));
 vi.mock("@/components/room/share-room-button", () => ({
   ShareRoomButton: ({ roomId, initialInviteUrl }: { roomId: string; initialInviteUrl: string }) => (
@@ -77,6 +81,7 @@ describe("RoomEditor", () => {
       status: "connected",
       error: null,
       reloadHint: false,
+      retry: () => undefined,
     };
   });
 
@@ -93,7 +98,7 @@ describe("RoomEditor", () => {
   it("shows the room's presence and connection status", () => {
     renderEditor();
 
-    expect(screen.getByTestId("presence")).toHaveTextContent("presence");
+    expect(screen.getByTestId("presence")).toHaveTextContent("u1,u2");
     expect(screen.getByRole("status")).toHaveTextContent("Connected");
   });
 
@@ -107,10 +112,11 @@ describe("RoomEditor", () => {
   });
 
   it("shows why the room could not be joined", () => {
-    room.value = { ...room.value, status: "connecting", error: "Room not found" };
+    room.value = { ...room.value, status: "connecting", error: "not_found" };
     renderEditor();
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Could not join this room: Room not found");
+    expect(screen.getByRole("alert")).toHaveTextContent("You can't join this room");
+    expect(screen.getByRole("link", { name: "Back to your rooms" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Disconnected");
   });
 
@@ -133,12 +139,12 @@ describe("RoomEditor", () => {
     room.value = {
       ...room.value,
       status: "disconnected",
-      error: "Room not found",
+      error: "not_found",
       reloadHint: true,
     };
     renderEditor();
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Could not join this room: Room not found");
+    expect(screen.getByRole("alert")).toHaveTextContent("You can't join this room");
     expect(screen.queryByText(/Having trouble reconnecting/)).not.toBeInTheDocument();
   });
 
@@ -166,6 +172,34 @@ describe("RoomEditor", () => {
     renderEditor(null);
 
     expect(screen.queryByRole("button", { name: /^Share/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps presence in a sidebar from lg up and folds it away below lg", () => {
+    renderEditor();
+
+    const panel = screen.getByTestId("presence").parentElement;
+    expect(panel).toHaveAttribute("id", "presence-panel");
+    expect(panel).toHaveClass("hidden", "lg:block", "lg:static");
+    expect(screen.getByRole("button", { name: "People (2)" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("opens the presence panel over the editor from the toolbar and closes it on Escape", () => {
+    renderEditor();
+    const panel = screen.getByTestId("presence").parentElement;
+
+    fireEvent.click(screen.getByRole("button", { name: "People (2)" }));
+    expect(panel).not.toHaveClass("hidden");
+    expect(panel).toHaveClass("absolute", "lg:static");
+    expect(screen.getByRole("button", { name: "People (2)" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(panel).toHaveClass("hidden");
   });
 
   afterEach(() => {

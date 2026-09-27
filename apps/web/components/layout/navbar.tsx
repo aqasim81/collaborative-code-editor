@@ -1,4 +1,5 @@
 import type { SessionUser } from "@collab-editor/shared";
+import { CodeXml } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { signOutAction } from "@/actions/auth";
@@ -15,8 +16,10 @@ export function Navbar({ user }: NavbarProps) {
         aria-label="Main"
         className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4"
       >
-        <Link href="/" className="font-semibold">
-          Collaborative Code Editor
+        <Link href="/" className="flex items-center gap-2 font-semibold">
+          <CodeXml aria-hidden="true" className="size-5" />
+          {/* Icon only on phones; the name stays readable to screen readers at every width. */}
+          <span className="sr-only sm:not-sr-only">Collaborative Code Editor</span>
         </Link>
         {user ? (
           <div className="flex items-center gap-3">
@@ -32,7 +35,7 @@ export function Navbar({ user }: NavbarProps) {
                 className="rounded-full"
               />
             ) : null}
-            <span className="text-sm">{user.name}</span>
+            <span className="hidden text-sm md:inline">{user.name}</span>
             <form action={signOutAction}>
               <button
                 type="submit"

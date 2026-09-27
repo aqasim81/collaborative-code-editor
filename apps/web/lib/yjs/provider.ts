@@ -11,6 +11,7 @@ import type { Awareness } from "y-protocols/awareness";
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
 import type { RoomTicketResult } from "@/actions/room-ticket";
+import type { RoomJoinErrorCode } from "@/lib/room-errors";
 import { setLocalUser } from "./awareness";
 
 /** What the socket is doing, as y-websocket reports it. */
@@ -60,9 +61,6 @@ export function ticketRetryDelayMs(attempt: number, random: () => number = Math.
   return backoff * (0.5 + random() / 2);
 }
 
-/** Shown when the WS server closes the room because it was deleted (#48). */
-export const ROOM_DELETED_MESSAGE = "This room was deleted";
-
 export interface ConnectRoomOptions {
   serverUrl: string;
   roomId: string;
@@ -71,7 +69,7 @@ export interface ConnectRoomOptions {
   fetchTicket: (roomId: string) => Promise<RoomTicketResult>;
   onStatus?: (status: ConnectionStatus) => void;
   /** Called when the ticket is refused or the room was deleted; the connection then stays down. */
-  onError?: (message: string) => void;
+  onError?: (code: RoomJoinErrorCode) => void;
   /** Called with `true` once ticket fetches have kept throwing for a while, and with `false` once one returns. */
   onReloadHint?: (show: boolean) => void;
   /** Unix seconds; injectable for tests. */
@@ -87,6 +85,8 @@ export interface RoomConnection {
   provider: WebsocketProvider;
   /** Presence only (cursors, who is here): never stored (Invariant 5). */
   awareness: Awareness;
+  /** Tries again now, with a fresh ticket, instead of waiting for the next backoff. */
+  retry(): void;
   destroy(): void;
 }
 
@@ -99,6 +99,7 @@ export interface RoomConnection {
  * succeeds or the room is left; a refused ticket is reported through `onError` and never retried.
  * After a long run of thrown fetches `onReloadHint` suggests a reload; retrying goes on meanwhile.
  * A close because the room was deleted ends it for good: no reconnect, no ticket fetch, one `onError`.
+ * `retry()` skips whatever backoff is pending and tries again at once with a fresh ticket.
  */
 export function connectRoom({
   serverUrl,
@@ -124,15 +125,18 @@ export function connectRoom({
   let destroyed = false;
   let everConnected = false;
   let ticketFailures = 0;
+  let fetchingTicket = false;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
   async function connectWithFreshTicket(): Promise<void> {
     // null: the fetch threw. A server action throws in the browser only for transient trouble (network
     // drop, redeploy, database down); refusals come back as `success: false`.
     let result: RoomTicketResult | null = null;
+    fetchingTicket = true;
     try {
       result = await fetchTicket(roomId);
     } catch {}
+    fetchingTicket = false;
     if (destroyed) {
       return;
     }
@@ -152,7 +156,7 @@ export function connectRoom({
     }
     ticketFailures = 0;
     if (!result.success) {
-      onError?.(result.error);
+      onError?.(result.code);
       return;
     }
     expiresAt = result.data.expiresAt;
@@ -198,7 +202,7 @@ export function connectRoom({
       // was open, so no ticket fetch or retry is pending, and none will start.
       provider.shouldConnect = false;
       if (!destroyed) {
-        onError?.(ROOM_DELETED_MESSAGE);
+        onError?.("deleted");
       }
       return;
     }
@@ -225,6 +229,19 @@ export function connectRoom({
     text: doc.getText(SHARED_TEXT_NAME),
     provider,
     awareness: provider.awareness,
+    retry() {
+      if (destroyed || provider.wsconnected || fetchingTicket) {
+        return;
+      }
+      clearTimeout(retryTimer);
+      // Closes any half-open socket and turns the provider's own reconnect off (its pending timer then does
+      // nothing); the fresh ticket below reconnects it.
+      provider.disconnect();
+      // y-websocket only resets this when a socket opens: without it the new attempt would read as red.
+      provider.wsUnsuccessfulReconnects = 0;
+      onStatus?.(toConnectionStatus("connecting", everConnected, 0));
+      void connectWithFreshTicket();
+    },
     destroy() {
       destroyed = true;
       clearTimeout(retryTimer);

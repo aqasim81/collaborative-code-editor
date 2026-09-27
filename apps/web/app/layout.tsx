@@ -20,6 +20,11 @@ const toasterStyle = {
 export const metadata: Metadata = {
   title: "Collaborative Code Editor",
   description: "Real-time collaborative code editor powered by CRDTs",
+  openGraph: {
+    title: "Collaborative Code Editor",
+    description: "Write code together in real time: conflict-free sync, live cursors and presence.",
+    type: "website",
+  },
 };
 
 export default async function RootLayout({

@@ -12,7 +12,6 @@ import {
   type ConnectionStatus,
   type ConnectRoomOptions,
   connectRoom,
-  ROOM_DELETED_MESSAGE,
   type RoomConnection,
   TICKET_FAILURES_BEFORE_RELOAD_HINT,
   TICKET_RETRY_BASE_MS,
@@ -283,11 +282,15 @@ describe("connectRoom", () => {
   it("reports a refused ticket, never retries it and never opens a socket", async () => {
     const onError = vi.fn();
     const fetchTicket = vi.fn(
-      async (): Promise<RoomTicketResult> => ({ success: false, error: "Room not found" }),
+      async (): Promise<RoomTicketResult> => ({
+        success: false,
+        error: "Room not found",
+        code: "not_found",
+      }),
     );
     connect(fetchTicket, { onError, retryDelayMs: () => 0 });
 
-    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Room not found"));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("not_found"));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(fetchTicket).toHaveBeenCalledOnce();
     expect(FakeWebSocket.instances).toHaveLength(0);
@@ -436,10 +439,10 @@ describe("connectRoom", () => {
     const fetchTicket = vi
       .fn<(roomId: string) => Promise<RoomTicketResult>>()
       .mockRejectedValueOnce(new Error("down"))
-      .mockResolvedValue({ success: false, error: "Room not found" });
+      .mockResolvedValue({ success: false, error: "Room not found", code: "not_found" });
     connect(fetchTicket, { onError, retryDelayMs: () => 0 });
 
-    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Room not found"));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("not_found"));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(onError).toHaveBeenCalledOnce();
     expect(fetchTicket).toHaveBeenCalledTimes(2);
@@ -533,13 +536,13 @@ describe("connectRoom", () => {
   it("never suggests a reload for a refused ticket (#43)", async () => {
     const onReloadHint = vi.fn();
     const onError = vi.fn();
-    connect(async () => ({ success: false, error: "Room not found" }), {
+    connect(async () => ({ success: false, error: "Room not found", code: "not_found" }), {
       onReloadHint,
       onError,
       retryDelayMs: () => 0,
     });
 
-    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Room not found"));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("not_found"));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(onReloadHint).not.toHaveBeenCalled();
   });
@@ -551,10 +554,14 @@ describe("connectRoom", () => {
     for (let i = 0; i < TICKET_FAILURES_BEFORE_RELOAD_HINT; i += 1) {
       fetchTicket.mockRejectedValueOnce(new Error("down"));
     }
-    fetchTicket.mockResolvedValueOnce({ success: false, error: "Room not found" });
+    fetchTicket.mockResolvedValueOnce({
+      success: false,
+      error: "Room not found",
+      code: "not_found",
+    });
     connect(fetchTicket, { onReloadHint, onError, retryDelayMs: () => 0 });
 
-    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Room not found"));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("not_found"));
     expect(onReloadHint.mock.calls).toEqual([[true], [false]]);
   });
 
@@ -578,14 +585,14 @@ describe("connectRoom", () => {
     const fetchTicket = vi
       .fn<(roomId: string) => Promise<RoomTicketResult>>()
       .mockResolvedValueOnce(ok("t1", NOW + 300))
-      .mockResolvedValueOnce({ success: false, error: "Room not found" });
+      .mockResolvedValueOnce({ success: false, error: "Room not found", code: "not_found" });
     connect(fetchTicket, { onError });
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
     socket(0).serverOpen();
 
     socket(0).serverClose(TICKET_EXPIRED_CLOSE_CODE);
 
-    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Room not found"));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("not_found"));
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
@@ -600,7 +607,7 @@ describe("connectRoom", () => {
 
     socket(0).serverClose(ROOM_DELETED_CLOSE_CODE);
 
-    expect(onError).toHaveBeenCalledExactlyOnceWith(ROOM_DELETED_MESSAGE);
+    expect(onError).toHaveBeenCalledExactlyOnceWith("deleted");
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(FakeWebSocket.instances).toHaveLength(1);
     expect(fetchTicket).toHaveBeenCalledTimes(1);
@@ -618,6 +625,72 @@ describe("connectRoom", () => {
     provider.emit("connection-close", [{ code: ROOM_DELETED_CLOSE_CODE } as CloseEvent, provider]);
 
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("retries at once with a fresh ticket while the server can't be reached (#37)", async () => {
+    const statuses: ConnectionStatus[] = [];
+    const fetchTicket = vi
+      .fn<(roomId: string) => Promise<RoomTicketResult>>()
+      .mockResolvedValueOnce(ok("t1", NOW + 300))
+      .mockResolvedValueOnce(ok("t2", NOW + 300));
+    const room = connect(fetchTicket, { onStatus: (s) => statuses.push(s) });
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    // Never opens: the provider counts a failed attempt and schedules its own reconnect.
+    socket(0).serverClose();
+    room.provider.wsUnsuccessfulReconnects = 5;
+
+    room.retry();
+
+    expect(statuses.at(-1)).toBe("connecting");
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+    expect(socket(1).protocols).toEqual(roomTicketProtocols("t2"));
+    expect(statuses.at(-1)).toBe("connecting");
+    // The provider's own pending reconnect finds the new socket and opens no other.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    socket(1).serverOpen();
+    expect(statuses.at(-1)).toBe("connected");
+  });
+
+  it("skips a pending ticket backoff on retry (#37)", async () => {
+    const fetchTicket = vi
+      .fn<(roomId: string) => Promise<RoomTicketResult>>()
+      .mockRejectedValueOnce(new Error("down"))
+      .mockResolvedValueOnce(ok("t1", NOW + 300));
+    const room = connect(fetchTicket, { retryDelayMs: () => 60_000 });
+    await vi.waitFor(() => expect(fetchTicket).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    room.retry();
+
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(fetchTicket).toHaveBeenCalledTimes(2);
+  });
+
+  it("does nothing on retry while connected, fetching a ticket or destroyed (#37)", async () => {
+    let resolveTicket: (result: RoomTicketResult) => void = () => undefined;
+    const fetchTicket = vi.fn(
+      () =>
+        new Promise<RoomTicketResult>((resolve) => {
+          resolveTicket = resolve;
+        }),
+    );
+    const room = connect(fetchTicket);
+    await vi.waitFor(() => expect(fetchTicket).toHaveBeenCalledOnce());
+
+    room.retry();
+    expect(fetchTicket).toHaveBeenCalledOnce();
+
+    resolveTicket(ok("t1", NOW + 300));
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    socket(0).serverOpen();
+    room.retry();
+    expect(fetchTicket).toHaveBeenCalledOnce();
+
+    room.destroy();
+    connection = null;
+    room.retry();
+    expect(fetchTicket).toHaveBeenCalledOnce();
   });
 
   it("stops everything on destroy, including a ticket that arrives later", async () => {

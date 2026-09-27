@@ -16,9 +16,15 @@ describe("ConnectionStatus", () => {
   });
 
   it("shows red when the room can't be joined, whatever the socket says", () => {
-    render(<ConnectionStatus status="connecting" error="Room not found" />);
+    render(<ConnectionStatus status="connecting" error="not_found" />);
 
     expect(screen.getByRole("status")).toHaveTextContent("Disconnected");
     expect(screen.getByTestId("status-dot")).toHaveClass("bg-red-500");
+  });
+
+  it("shows only the dot on phones but keeps the word for screen readers", () => {
+    render(<ConnectionStatus status="connected" error={null} />);
+
+    expect(screen.getByText("Connected")).toHaveClass("sr-only", "sm:not-sr-only");
   });
 });

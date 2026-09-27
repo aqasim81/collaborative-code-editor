@@ -19,6 +19,8 @@ vi.mock("@/lib/yjs/provider", () => ({ connectRoom }));
 
 import { RoomProvider, useRoom } from "@/components/room/room-provider";
 
+const retryMock = vi.fn();
+
 const ADA = { id: "u1", name: "Ada", image: null };
 
 function Probe() {
@@ -47,7 +49,7 @@ describe("RoomProvider", () => {
       text.insert(0, "hello");
       const destroy = vi.fn();
       calls.push({ options, destroy });
-      return { doc, text, provider: {}, awareness: new Awareness(doc), destroy };
+      return { doc, text, provider: {}, awareness: new Awareness(doc), retry: retryMock, destroy };
     });
   });
 
@@ -90,8 +92,8 @@ describe("RoomProvider", () => {
     );
     const { options } = lastCall();
 
-    act(() => options.onError?.("Room not found"));
-    expect(screen.getByTestId("probe")).toHaveTextContent("hello|connecting|Room not found");
+    act(() => options.onError?.("not_found"));
+    expect(screen.getByTestId("probe")).toHaveTextContent("hello|connecting|not_found");
 
     act(() => options.onStatus?.("connected"));
     expect(screen.getByTestId("probe")).toHaveTextContent("hello|connected|");
@@ -126,7 +128,7 @@ describe("RoomProvider", () => {
       </RoomProvider>,
     );
     act(() => lastCall().options.onStatus?.("connected"));
-    act(() => lastCall().options.onError?.("Room not found"));
+    act(() => lastCall().options.onError?.("not_found"));
     act(() => lastCall().options.onReloadHint?.(true));
 
     rerender(
@@ -137,6 +139,26 @@ describe("RoomProvider", () => {
 
     expect(lastCall().options.roomId).toBe("r2");
     expect(screen.getByTestId("probe")).toHaveTextContent(/^hello\|connecting\|$/);
+  });
+
+  it("retries through the room's connection (#37)", () => {
+    function RetryProbe() {
+      const { retry } = useRoom();
+      return (
+        <button type="button" onClick={retry}>
+          Retry
+        </button>
+      );
+    }
+    render(
+      <RoomProvider roomId="r1" user={ADA} serverUrl="ws://ws.test">
+        <RetryProbe />
+      </RoomProvider>,
+    );
+
+    act(() => screen.getByRole("button", { name: "Retry" }).click());
+
+    expect(retryMock).toHaveBeenCalledOnce();
   });
 
   it("renders the fallback, also on the server, until the connection exists", () => {

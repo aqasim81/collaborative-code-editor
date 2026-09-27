@@ -15,21 +15,21 @@ interface ToolbarProps {
 
 export function Toolbar({ roomName, status, language, onLanguageChange, actions }: ToolbarProps) {
   return (
-    <div className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-neutral-200 px-4 dark:border-neutral-800">
-      <div className="flex min-w-0 items-center gap-3">
+    <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-neutral-200 px-4 dark:border-neutral-800">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <Link
           href={DASHBOARD_PATH}
           className="shrink-0 text-sm text-neutral-600 hover:underline dark:text-neutral-400"
         >
-          ← Rooms
+          ← <span className="sr-only sm:not-sr-only">Rooms</span>
         </Link>
         <h1 className="truncate text-sm font-medium">{roomName}</h1>
         {status}
       </div>
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         {actions}
         <label className="flex items-center gap-2 text-sm">
-          <span>Language</span>
+          <span className="sr-only sm:not-sr-only">Language</span>
           <select
             value={language}
             onChange={(event) => onLanguageChange(toLanguageId(event.target.value))}

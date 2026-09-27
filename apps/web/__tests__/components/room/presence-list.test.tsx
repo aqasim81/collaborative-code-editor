@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from "y-protocols/awareness";
 import * as Y from "yjs";
 import { PresenceList } from "@/components/room/presence-list";
-import { setLocalUser } from "@/lib/yjs/awareness";
+import { setLocalUser, usePresence } from "@/lib/yjs/awareness";
 
 const created: Awareness[] = [];
 afterEach(() => {
@@ -24,6 +24,11 @@ function relay(to: Awareness, from: Awareness) {
   });
 }
 
+// The list as the room renders it: fed from the live awareness by usePresence.
+function LivePresenceList({ awareness, selfId }: { awareness: Awareness; selfId: string }) {
+  return <PresenceList entries={usePresence(awareness, selfId)} />;
+}
+
 const list = () => within(screen.getByRole("complementary", { name: /in this room/i }));
 
 describe("PresenceList", () => {
@@ -36,7 +41,7 @@ describe("PresenceList", () => {
       name: "Ada",
       image: "https://avatars.githubusercontent.com/u/1",
     });
-    render(<PresenceList awareness={local} selfId="u-me" />);
+    render(<LivePresenceList awareness={local} selfId="u-me" />);
     relay(local, ada);
 
     expect(screen.getByRole("heading")).toHaveTextContent("In this room (2)");
@@ -51,7 +56,7 @@ describe("PresenceList", () => {
   it("adds people as they join and removes them when they leave", () => {
     const local = awareness();
     setLocalUser(local, { id: "u-me", name: "Me", image: null });
-    render(<PresenceList awareness={local} selfId="u-me" />);
+    render(<LivePresenceList awareness={local} selfId="u-me" />);
     expect(list().getAllByRole("listitem")).toHaveLength(1);
 
     const bob = awareness();

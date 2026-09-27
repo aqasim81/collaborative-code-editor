@@ -22,6 +22,8 @@ describe("authConfig", () => {
   it("uses JWT sessions and the custom sign-in page", () => {
     expect(authConfig.session.strategy).toBe("jwt");
     expect(authConfig.pages.signIn).toBe(SIGN_IN_PATH);
+    // Sign-in failures land on the same page, which explains them (#37).
+    expect(authConfig.pages.error).toBe(SIGN_IN_PATH);
     expect(authConfig.providers).toHaveLength(1);
   });
 

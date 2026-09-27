@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Phase 7 — Landing, layout and error states (#37)
+- Landing page: hero with a static picture of two people editing (carets in their real presence colours), three feature cards (real-time sync, cursors and presence, persistence), how it works, and a call to action that signs you in or opens your rooms. A favicon and Open Graph metadata
+- A footer (stack, source link) on every content page through `PageShell`; not on the full-height room page. The navbar shows only the logo and avatar on phones
+- The room's presence sidebar folds away below the `lg` breakpoint behind a "People (n)" toolbar button (Escape closes it); the toolbar fits tablet widths, and on phones the status and "Rooms" words are screen-reader-only
+- Room-join refusals carry a typed code (`invalid_room`, `unauthenticated`, `not_found`, `deleted`) from the ticket action through the provider; the room shows readable copy with a way forward (back to your rooms, or sign in and return). An unreachable WS server shows a banner saying edits stay in the tab, with Retry now (`RoomConnection.retry()`: a fresh ticket at once). The reload hint (#43) lives in the same banner
+- 404 pages (global, and a room 404 that reads the same for a missing room and a non-member), `error.tsx` with Try again and the error digest, `global-error.tsx`
+- Sign-in failures land on `/sign-in?error=<type>` (`pages.error`) with a readable message above the button; the sign-in action turns an Auth.js error into that redirect
+- `pnpm --filter @collab-editor/web e2e:prod`: a Playwright check against the production build for console errors and warnings and horizontal scroll at 1280/1024/768/390 px (run by hand; `E2E_SIGNED_OUT_ONLY=1` for the public pages)
+- Tests: landing, footer, page shell, navbar, presence toggle, room editor, status banner, provider `retry()`, ticket codes, 404 and error pages, sign-in errors
+
 ### Secret invite links (#36)
 - Every room has a secret invite token (`Room.inviteToken`, 32 random bytes as 43 base64url characters, unique); the migration backfills existing rooms in the same format
 - The room owner's toolbar has a Share button: it copies `/join/<token>` with a toast, shows the link in a dialog, and resets it after a confirmation (the old link stops working, members keep access). Nobody else sees it

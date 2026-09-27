@@ -3,9 +3,13 @@
 import type { SessionUser } from "@collab-editor/shared";
 import { type ReactNode, useState } from "react";
 import { PresenceList } from "@/components/room/presence-list";
+import { PRESENCE_PANEL_ID, PresenceToggle } from "@/components/room/presence-toggle";
 import { RoomProvider, useRoom } from "@/components/room/room-provider";
+import { RoomStatusBanner } from "@/components/room/room-status-banner";
 import { ShareRoomButton } from "@/components/room/share-room-button";
 import type { LanguageId } from "@/lib/languages";
+import { cn } from "@/lib/utils";
+import { usePresence } from "@/lib/yjs/awareness";
 import { CodeEditor } from "./code-editor";
 import { ConnectionStatus } from "./connection-status";
 import { Toolbar } from "./toolbar";
@@ -23,6 +27,7 @@ interface RoomEditorProps {
 }
 
 interface RoomViewProps {
+  roomId: string;
   roomName: string;
   actions: ReactNode;
   selfId: string;
@@ -30,8 +35,17 @@ interface RoomViewProps {
   onLanguageChange: (language: LanguageId) => void;
 }
 
-function RoomView({ roomName, actions, selfId, language, onLanguageChange }: RoomViewProps) {
-  const { text, awareness, status, error, reloadHint } = useRoom();
+function RoomView({
+  roomId,
+  roomName,
+  actions,
+  selfId,
+  language,
+  onLanguageChange,
+}: RoomViewProps) {
+  const { text, awareness, status, error } = useRoom();
+  const people = usePresence(awareness, selfId);
+  const [presenceOpen, setPresenceOpen] = useState(false);
   return (
     <div className="flex h-full flex-col">
       <Toolbar
@@ -39,34 +53,31 @@ function RoomView({ roomName, actions, selfId, language, onLanguageChange }: Roo
         status={<ConnectionStatus status={status} error={error} />}
         language={language}
         onLanguageChange={onLanguageChange}
-        actions={actions}
+        actions={
+          <>
+            {actions}
+            <PresenceToggle
+              count={people.length}
+              open={presenceOpen}
+              onOpenChange={setPresenceOpen}
+            />
+          </>
+        }
       />
-      {error ? (
-        <p
-          role="alert"
-          className="shrink-0 border-b border-red-300 bg-red-50 px-4 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
-        >
-          Could not join this room: {error}
-        </p>
-      ) : null}
-      {reloadHint && !error ? (
-        <output className="flex shrink-0 items-center gap-3 border-b border-yellow-300 bg-yellow-50 px-4 py-2 text-sm text-yellow-900 dark:border-yellow-900 dark:bg-yellow-950 dark:text-yellow-200">
-          <span>Having trouble reconnecting. Reloading the page may help.</span>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="rounded border border-yellow-400 px-2 py-0.5 font-medium hover:bg-yellow-100 focus-visible:outline-2 focus-visible:outline-yellow-600 dark:hover:bg-yellow-900"
-          >
-            Reload
-          </button>
-        </output>
-      ) : null}
-      <div className="flex min-h-0 flex-1">
+      <RoomStatusBanner roomId={roomId} />
+      <div className="relative flex min-h-0 flex-1">
         <div className="min-w-0 flex-1">
           <CodeEditor language={language} text={text} awareness={awareness} />
         </div>
-        <div className="hidden w-56 shrink-0 border-l border-neutral-200 md:block dark:border-neutral-800">
-          <PresenceList awareness={awareness} selfId={selfId} />
+        {/* A sidebar from lg up; below lg an overlay the toolbar's People button opens. */}
+        <div
+          id={PRESENCE_PANEL_ID}
+          className={cn(
+            "shrink-0 border-l border-neutral-200 bg-background lg:static lg:block lg:w-56 lg:shadow-none dark:border-neutral-800",
+            presenceOpen ? "absolute inset-y-0 right-0 z-10 w-64 shadow-lg" : "hidden",
+          )}
+        >
+          <PresenceList entries={people} />
         </div>
       </div>
     </div>
@@ -102,6 +113,7 @@ export function RoomEditor({
       }
     >
       <RoomView
+        roomId={roomId}
         roomName={roomName}
         actions={actions}
         selfId={user.id}

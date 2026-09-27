@@ -4,12 +4,16 @@ import { after } from "next/server";
 import { auth } from "@/lib/auth";
 import { toSessionUser } from "@/lib/auth.config";
 import { env } from "@/lib/env";
-import { NOT_SIGNED_IN, type Result } from "@/lib/result";
+import { NOT_SIGNED_IN } from "@/lib/result";
+import type { RoomJoinErrorCode } from "@/lib/room-errors";
 import { INVALID_ROOM_ID, ROOM_NOT_FOUND, roomIdSchema } from "@/lib/room-input";
 import { findRoomForMember, markRoomActive } from "@/lib/rooms";
 import { type RoomTicket, signRoomTicket } from "@/lib/ws-ticket";
 
-export type RoomTicketResult = Result<RoomTicket>;
+/** A `Result` whose failure also says why, so the room can show the right way forward. */
+export type RoomTicketResult =
+  | { success: true; data: RoomTicket }
+  | { success: false; error: string; code: RoomJoinErrorCode };
 
 /**
  * Issues a short-lived ticket for joining a room on the WS server. Membership is checked here, so the
@@ -18,17 +22,17 @@ export type RoomTicketResult = Result<RoomTicket>;
 export async function getRoomTicket(roomId: unknown): Promise<RoomTicketResult> {
   const parsed = roomIdSchema.safeParse(roomId);
   if (!parsed.success) {
-    return { success: false, error: INVALID_ROOM_ID };
+    return { success: false, error: INVALID_ROOM_ID, code: "invalid_room" };
   }
 
   const user = toSessionUser(await auth());
   if (!user) {
-    return { success: false, error: NOT_SIGNED_IN };
+    return { success: false, error: NOT_SIGNED_IN, code: "unauthenticated" };
   }
 
   const room = await findRoomForMember(parsed.data, user.id);
   if (!room) {
-    return { success: false, error: ROOM_NOT_FOUND };
+    return { success: false, error: ROOM_NOT_FOUND, code: "not_found" };
   }
 
   // Every connected client fetches a ticket at connect and before expiry, which is what makes

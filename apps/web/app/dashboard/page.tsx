@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { listRooms } from "@/actions/room";
+import { PageShell } from "@/components/layout/page-shell";
 import { CreateRoomDialog } from "@/components/room/create-room-dialog";
 import { RoomCard } from "@/components/room/room-card";
 import { auth } from "@/lib/auth";
@@ -21,13 +22,13 @@ export default async function DashboardPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-12">
+    <PageShell className="mx-auto w-full max-w-6xl px-4 py-12">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Your rooms</h1>
         <CreateRoomDialog />
       </div>
       <RoomList rooms={await listRooms()} />
-    </main>
+    </PageShell>
   );
 }
 

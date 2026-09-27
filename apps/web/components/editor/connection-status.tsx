@@ -1,9 +1,10 @@
+import type { RoomJoinErrorCode } from "@/lib/room-errors";
 import type { ConnectionStatus as Status } from "@/lib/yjs/provider";
 
 interface ConnectionStatusProps {
   status: Status;
   /** Set when the room can't be joined at all (no ticket); shown as disconnected. */
-  error: string | null;
+  error: RoomJoinErrorCode | null;
 }
 
 const LOOK: Record<Status, { label: string; dot: string }> = {
@@ -19,10 +20,11 @@ export function ConnectionStatus({ status, error }: ConnectionStatusProps) {
   return (
     <output
       aria-live="polite"
-      className="flex items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400"
+      className="flex shrink-0 items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400"
     >
       <span aria-hidden="true" data-testid="status-dot" className={`size-2 rounded-full ${dot}`} />
-      {label}
+      {/* Dot only on phones; the word stays for screen readers. */}
+      <span className="sr-only sm:not-sr-only">{label}</span>
     </output>
   );
 }

@@ -10,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55); responses, near-miss cookie keys and raw request objects in log calls are covered too (#57); owners share rooms with a secret, resettable invite link that makes signed-in visitors editors (#36, ADR 0003). Next: landing page and polish (#37). History, blockers and local setup: `docs/status.md`.
+Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55); responses, near-miss cookie keys and raw request objects in log calls are covered too (#57); owners share rooms with a secret, resettable invite link that makes signed-in visitors editors (#36, ADR 0003); landing page, footer, tablet-width room (presence folds away below `lg`), typed room-join errors with a way forward, unreachable-server banner with Retry now, 404/error pages, sign-in failure messages and a Playwright production check (#37). Next: README (#38). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 
@@ -83,6 +83,8 @@ pnpm test:coverage          # Run tests with coverage enforcement (80%)
 pnpm --filter @collab-editor/ws-server exec vitest run __tests__/sync/sync-room.test.ts   # one file
 pnpm --filter @collab-editor/web exec vitest run __tests__/lib/rooms.test.ts -t "<name>"  # one case
 pnpm --filter @collab-editor/web test:watch   # watch mode
+E2E_SIGNED_OUT_ONLY=1 pnpm --filter @collab-editor/web e2e:prod   # production console/overflow check, public pages
+                            # (needs pnpm build + web start; full run with WS server: see docs/status.md Next Steps)
 
 # Validation — the single gate (hooks, CI and Claude all call this)
 make verify                 # wraps pnpm validate: lint + type-check + test:coverage
@@ -226,6 +228,9 @@ Rules that must never break. The `invariant-auditor` agent checks changes agains
 - `apps/web/lib/env.ts` is loaded by `next.config.ts`, whose loader can't resolve `@collab-editor/shared`'s TS
   source: importing the shared package there passes `make verify` but breaks `pnpm build`. Run `pnpm build`
   after touching `lib/env.ts` or anything it imports.
+- The Bash guard refuses any command whose *text* mentions `.env` or the Node env object, heredocs and
+  grep patterns included. Write or edit such files (e2e setup, docs quoting `--env-file`) with the Edit/Write
+  tools, and read them with Read.
 - (Add each repeated mistake here, with the correct behaviour.)
 
 ## Workflow

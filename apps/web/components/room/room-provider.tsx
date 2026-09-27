@@ -5,6 +5,7 @@ import { createContext, type ReactNode, useContext, useEffect, useState } from "
 import type { Awareness } from "y-protocols/awareness";
 import type * as Y from "yjs";
 import { getRoomTicket } from "@/actions/room-ticket";
+import type { RoomJoinErrorCode } from "@/lib/room-errors";
 import { type ConnectionStatus, connectRoom, type RoomConnection } from "@/lib/yjs/provider";
 
 export interface RoomContextValue {
@@ -12,9 +13,12 @@ export interface RoomContextValue {
   text: Y.Text;
   awareness: Awareness;
   status: ConnectionStatus;
-  error: string | null;
+  /** Why the room was refused; the connection then stays down. */
+  error: RoomJoinErrorCode | null;
   /** Ticket fetches have kept failing: suggest a reload (the user decides; unsynced edits would be lost). */
   reloadHint: boolean;
+  /** Reconnects now instead of waiting for the next automatic attempt. */
+  retry: () => void;
 }
 
 const RoomContext = createContext<RoomContextValue | null>(null);
@@ -39,7 +43,7 @@ export function RoomProvider({
 }: RoomProviderProps) {
   const [connection, setConnection] = useState<RoomConnection | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<RoomJoinErrorCode | null>(null);
   const [reloadHint, setReloadHint] = useState(false);
 
   // Primitive deps: a new `user` object on every render must not reconnect the room.
@@ -83,6 +87,7 @@ export function RoomProvider({
         status,
         error,
         reloadHint,
+        retry: connection.retry,
       }}
     >
       {children}

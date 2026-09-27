@@ -30,6 +30,11 @@ dist/
 # Coverage
 coverage/
 
+# Playwright production check (apps/web/e2e)
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/e2e/.auth/
+
 # LevelDB (WS server document persistence)
 .leveldb/
 

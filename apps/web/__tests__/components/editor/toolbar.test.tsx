@@ -16,6 +16,7 @@ describe("Toolbar", () => {
     render(<Toolbar roomName="Pairing" language="javascript" onLanguageChange={vi.fn()} />);
 
     expect(screen.getByRole("link", { name: "← Rooms" })).toHaveAttribute("href", "/dashboard");
+    expect(screen.getByText("Rooms")).toHaveClass("sr-only", "sm:not-sr-only");
   });
 
   it("selects the current language", () => {
@@ -33,6 +34,13 @@ describe("Toolbar", () => {
     fireEvent.change(screen.getByLabelText("Language"), { target: { value: "python" } });
 
     expect(onLanguageChange).toHaveBeenCalledWith("python");
+  });
+
+  it("keeps the language picker labelled when the label text is hidden on phones", () => {
+    render(<Toolbar roomName="Pairing" language="javascript" onLanguageChange={vi.fn()} />);
+
+    expect(screen.getByText("Language")).toHaveClass("sr-only", "sm:not-sr-only");
+    expect(screen.getByRole("combobox", { name: "Language" })).toBeInTheDocument();
   });
 
   it("renders room actions next to the language picker", () => {

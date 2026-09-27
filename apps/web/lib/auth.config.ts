@@ -38,7 +38,8 @@ export const authConfig = {
   ],
   secret: env.AUTH_SECRET,
   session: { strategy: "jwt" },
-  pages: { signIn: SIGN_IN_PATH },
+  // Failures land on the sign-in page too (`?error=<type>`), not Auth.js's built-in error page.
+  pages: { signIn: SIGN_IN_PATH, error: SIGN_IN_PATH },
   callbacks: {
     // `user` is only present on sign-in; later calls keep the claims already on the token.
     jwt({ token, user }) {

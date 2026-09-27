@@ -1,13 +1,11 @@
 "use client";
 
 import Image from "next/image";
-import type { Awareness } from "y-protocols/awareness";
-import { type PresenceEntry, usePresence } from "@/lib/yjs/awareness";
+import type { PresenceEntry } from "@/lib/yjs/awareness";
 
 interface PresenceListProps {
-  awareness: Awareness;
-  /** The signed-in user's id, marked "(you)". */
-  selfId: string;
+  /** From `usePresence`: this user first, marked "(you)". */
+  entries: PresenceEntry[];
 }
 
 function initials(name: string): string {
@@ -48,8 +46,7 @@ function Avatar({ user }: { user: PresenceEntry["user"] }) {
 }
 
 /** Everyone in the room right now, one entry per person, updated as they join and leave. */
-export function PresenceList({ awareness, selfId }: PresenceListProps) {
-  const entries = usePresence(awareness, selfId);
+export function PresenceList({ entries }: PresenceListProps) {
   return (
     <aside
       aria-labelledby="presence-heading"

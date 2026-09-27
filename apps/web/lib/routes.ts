@@ -17,3 +17,12 @@ export function invitePath(token: string): string {
 export function signInRedirect(callbackPath: string): string {
   return `${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(callbackPath)}`;
 }
+
+/** The sign-in page explaining a failed sign-in (`type` is the Auth.js error type), still headed for `callbackPath`. */
+export function signInErrorPath(type: string, callbackPath?: string): string {
+  const path = `${SIGN_IN_PATH}?error=${encodeURIComponent(type)}`;
+  return callbackPath ? `${path}&callbackUrl=${encodeURIComponent(callbackPath)}` : path;
+}
+
+/** The project's public source repository, linked from the footer. */
+export const REPO_URL = "https://github.com/aqasim81/collaborative-code-editor";

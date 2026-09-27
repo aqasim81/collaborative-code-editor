@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { joinRoomAction } from "@/actions/invite";
+import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/auth";
 import { toSessionUser } from "@/lib/auth.config";
@@ -36,7 +37,7 @@ export default async function JoinPage({ params }: JoinPageProps) {
   }
 
   return (
-    <main className="mx-auto flex max-w-sm flex-col items-center gap-6 px-4 py-24 text-center">
+    <PageShell className="mx-auto flex w-full max-w-sm flex-col items-center gap-6 px-4 py-24 text-center">
       <h1 className="text-2xl font-semibold">Join {room.name}</h1>
       <p className="text-muted-foreground">
         {room.creator.name ?? "Someone"} invited you to edit this room together.
@@ -47,6 +48,6 @@ export default async function JoinPage({ params }: JoinPageProps) {
           Join room
         </Button>
       </form>
-    </main>
+    </PageShell>
   );
 }

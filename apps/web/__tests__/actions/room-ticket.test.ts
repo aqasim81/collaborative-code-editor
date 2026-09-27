@@ -55,6 +55,7 @@ describe("getRoomTicket", () => {
     await expect(getRoomTicket("r1")).resolves.toEqual({
       success: false,
       error: "Room not found",
+      code: "not_found",
     });
     expect(afterMock).not.toHaveBeenCalled();
   });
@@ -75,7 +76,11 @@ describe("getRoomTicket", () => {
   it("refuses a signed-out visitor without touching the database", async () => {
     authMock.mockResolvedValue(null);
 
-    await expect(getRoomTicket("r1")).resolves.toEqual({ success: false, error: "Not signed in" });
+    await expect(getRoomTicket("r1")).resolves.toEqual({
+      success: false,
+      error: "Not signed in",
+      code: "unauthenticated",
+    });
     expect(findRoomForMemberMock).not.toHaveBeenCalled();
   });
 
@@ -83,6 +88,7 @@ describe("getRoomTicket", () => {
     await expect(getRoomTicket(roomId)).resolves.toEqual({
       success: false,
       error: "Invalid room id",
+      code: "invalid_room",
     });
     expect(authMock).not.toHaveBeenCalled();
   });

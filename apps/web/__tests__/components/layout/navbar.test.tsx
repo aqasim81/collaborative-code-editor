@@ -32,6 +32,16 @@ describe("Navbar", () => {
     expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument();
   });
 
+  it("keeps the brand link's name at every width and hides the user's name on narrow screens", () => {
+    render(<Navbar user={{ id: "u1", name: "Ada Lovelace", image: null }} />);
+
+    expect(screen.getByRole("link", { name: "Collaborative Code Editor" })).toHaveAttribute(
+      "href",
+      "/",
+    );
+    expect(screen.getByText("Ada Lovelace")).toHaveClass("hidden", "md:inline");
+  });
+
   it("omits the avatar when the user has no image", () => {
     render(<Navbar user={{ id: "u1", name: "Ada Lovelace", image: null }} />);
 
