@@ -62,6 +62,13 @@ ASK: "Confirm the version for this release (suggested: v{X.Y.Z}), or specify a d
 
 ## 3. Pre-Release Validation
 
+`main` is protected (PRs only, required checks, admins included), so the release is made on a branch cut from an
+up-to-date `main`:
+```bash
+git switch main && git pull
+git switch -c chore/release-vX.Y.Z
+```
+
 Run the project's FULL validation suite:
 ```bash
 {full validate command from CLAUDE.md}
@@ -126,14 +133,33 @@ No file to update — version is the git tag itself. Skip this step.
 
 ---
 
-## 6. Create Git Tag and GitHub Release
+## 6. Merge the Release PR, Tag, and Create the GitHub Release
 
-### Tag the release:
+### Open the release PR:
+Write the PR body from `.github/PULL_REQUEST_TEMPLATE.md` (the vX.Y.Z changelog section under "What changed"), then:
 ```bash
-git push origin main
+git push -u origin chore/release-vX.Y.Z
+gh pr create --title "chore(release): vX.Y.Z" --body-file {body file}
+```
+
+### Merge it once the required checks pass:
+```bash
+gh pr checks {PR} --watch
+gh pr merge {PR} --squash --delete-branch
+```
+If the merge is refused because the branch is behind `main` (strict protection: something merged while the checks
+ran), run `gh pr update-branch {PR}`, watch the checks again, then merge. Never bypass the protection.
+
+### Tag the merge commit on `main`:
+The squash merge makes a new commit, so tag only after pulling it; a tag on the branch commit would point at history
+that is not on `main`.
+```bash
+git switch main && git pull
+git log -1 --oneline   # must be the "chore(release): vX.Y.Z" merge commit
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
+Branch protection does not cover tag pushes.
 
 ### Create GitHub Release:
 ```bash
@@ -163,7 +189,7 @@ EOF
 Deployment steps vary by platform:
 
 **Vercel (most Next.js projects):**
-- Push to main triggers auto-deploy
+- Merging the release PR into main triggers auto-deploy
 - Check the deployment dashboard or use `vercel` CLI
 
 **Railway:**
@@ -242,12 +268,22 @@ Add a new `[Unreleased]` section at the top of `docs/changelog.md`:
 ### Changed
 ```
 
-### 9e. Commit post-release updates:
+### 9e. Merge the post-release updates through a PR:
+They record the deploy result, known only after §8, so they get their own docs-only PR. Cut the branch before making
+the 9a, 9b and 9d edits:
 ```bash
+git switch main && git pull
+git switch -c chore/post-release-vX.Y.Z
+# 9a, 9b, 9d edits here
 git add docs/status.md docs/changelog.md CLAUDE.md
 git commit -m "chore: post-release updates for vX.Y.Z"
-git push origin main
+git push -u origin chore/post-release-vX.Y.Z
+gh pr create --title "chore(release): post-release updates for vX.Y.Z" --body-file {body file}
+gh pr checks {PR} --watch
+gh pr merge {PR} --squash --delete-branch
+git switch main && git pull
 ```
+As in §6: if the merge is refused as behind, `gh pr update-branch {PR}`, watch the checks again, then merge.
 
 ---
 

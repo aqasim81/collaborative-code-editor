@@ -105,6 +105,7 @@ allowed "cat .env.example"
 blocked "vercel deploy --prod"
 allowed "git commit -m 'deploy to prod later'"
 allowed "git push -u origin feat/x"
+allowed "git push origin v1.2.3"   # /release pushes only the tag; main moves through the release PR
 
 if (( failures > 0 )); then
   echo "hook tests FAILED ($failures)" >&2
