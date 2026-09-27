@@ -128,6 +128,14 @@ blocked "git push origin HEAD:main"
 blocked "git push origin feat/x:main"
 blocked "git push origin HEAD:refs/heads/main"
 blocked "git add -A && git commit -m x && git push"
+blocked "bash -c \"git push origin main && true\""
+blocked "git checkout -- README.md && git push"
+blocked "git push -o ci.skip origin"
+blocked "git push --repo origin"
+blocked "git push origin --tags main"
+blocked "git commit --no-verify -m x"
+blocked "git commit -n -m x"
+allowed "git commit -m x"   # the lefthook commit-msg script refuses it, not this guard
 allowed "git push origin v1.2.3"   # /release pushes only the tag; main moves through the release PR
 allowed "git push origin --tags"
 allowed "git push -u origin feat/x"
@@ -137,6 +145,7 @@ dir="$tmp/on-feat"
 allowed "git push"
 allowed "git push -u origin HEAD"
 blocked "git push origin feat/x:main"
+allowed "git commit --no-verify -m x"
 dir="$tmp/new-repo"
 allowed "git push -u origin main"   # /phase-start's first push, before origin has a main
 unset dir

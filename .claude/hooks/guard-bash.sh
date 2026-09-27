@@ -34,21 +34,31 @@ if [[ "$code" =~ $deploy_word && "$code" =~ $prod_word && -z "${RELEASE_APPROVAL
 fi
 # Pushes to main. Each `git push` names its destinations (main/master in a refspec such as `main`,
 # `HEAD:main` or `x:refs/heads/main`), or means the current branch when it has no refspec or only HEAD
-# (and no --tags). A `git switch`/`checkout` earlier in the command makes the current branch unknown, so
-# only named destinations count after one.
+# (and no --tags). A `git switch`/`checkout` of a branch earlier in the command makes the current branch
+# unknown, so only named destinations count after one. On main, `git commit --no-verify` (which skips the
+# lefthook commit-msg refusal) is blocked too.
 root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-if [[ "$code" =~ git[[:space:]]+push ]]; then
+if [[ "$code" =~ git[[:space:]]+(push|commit) ]]; then
   current="$(git -C "$root" branch --show-current 2>/dev/null || true)"
+  if [[ ( "$current" == main || "$current" == master ) \
+        && "$code" =~ git[[:space:]]+commit[^\;\&\|]*[[:space:]](--no-verify|-n)([[:space:]]|$) ]]; then
+    block "do not commit on $current. Branch first: git switch -c <type>/<issue>-<name>"
+  fi
   for dest in $(printf '%s' "$code" | CURRENT="$current" perl -0777 -ne '
-    while (/(?:^|[;&|(\s])git\s+push\b([^;&|)\n]*)/g) {
+    while (/(?:^|[;&|(\s"\x27\x60])git\s+push\b([^;&|)\n"\x27\x60]*)/g) {
       my $rest = $1;
-      my $switched = $` =~ /git\s+(?:switch|checkout)\b/;
+      my $switched = $` =~ /git\s+(?:switch|checkout)\s+(?!--(?:\s|$))\S/;
       my @args = split " ", $rest;
-      my @refs = grep { !/^-/ } @args;
+      my ($tags, @refs) = (0);
+      while (defined(my $w = shift @args)) {
+        if ($w =~ /^(?:-o|--push-option|--repo|--receive-pack|--exec)$/) { shift @args }
+        elsif ($w eq "--tags") { $tags = 1 }
+        elsif ($w !~ /^-/) { push @refs, $w }
+      }
       shift @refs;
       my @named = map { m{^\+?(?:[^:]*:)?(?:refs/heads/)?(main|master)$} ? $1 : () } @refs;
       if (@named) { print "$_\n" for @named }
-      elsif (!$switched && !grep({ $_ eq "--tags" } @args) && !grep({ $_ ne "HEAD" } @refs)
+      elsif (!$switched && !$tags && !grep({ $_ ne "HEAD" } @refs)
              && $ENV{CURRENT} =~ /^(main|master)$/) { print "$ENV{CURRENT}\n" }
     }'); do
     # A new repository's first push (origin has no such branch yet, so no protection either) is allowed.

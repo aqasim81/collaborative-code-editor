@@ -160,7 +160,8 @@ See `docs/architecture.md` and `docs/adr/` for diagrams and decisions.
   `cp`/`mv`, `rm`, `sed -i`, script writers) but lets `prisma migrate`, `shadcn add` and `db:migrate` through, and
   its tests (`.claude/hooks/tests/guard-bash.test.sh`) run in `make verify`; with `CLAUDE_FIX_MODE=1` test files are read-only.
   `guard-bash.sh` refuses a push to `main`/`master`, named (`origin main`, `HEAD:main`) or implied (a bare push while
-  on `main`), unless origin has no such branch yet; lefthook `commit-msg` refuses commits on `main` (`no-commit-on-main.sh`)
+  on `main`), unless origin has no such branch yet, and `git commit --no-verify` on `main`; lefthook `commit-msg` refuses
+  commits on `main` (`no-commit-on-main.sh`)
 - **CI:** GitHub Actions runs `make verify`, then build
 
 ## Security

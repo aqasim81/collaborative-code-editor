@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Commits and pushes on main are refused locally (#6)
-- `guard-bash.sh` refuses a `git push` to `main`/`master`, whether named (`origin main`, `HEAD:main`, `x:refs/heads/main`) or implied (a bare `git push`, `git push origin` or `git push origin HEAD` while `main` is checked out). Tag pushes, `--tags`, feature branches and a push right after `git switch -c` stay allowed, and so does a new repository's first push, while origin has no `main` yet
+- `guard-bash.sh` refuses a `git push` to `main`/`master`, whether named (`origin main`, `HEAD:main`, `x:refs/heads/main`) or implied (a bare `git push`, `git push origin` or `git push origin HEAD` while `main` is checked out). Pushes inside `bash -c` count too. Tag pushes, `--tags`, feature branches and a push right after `git switch -c` stay allowed, and so does a new repository's first push, while origin has no `main` yet. On `main`, `git commit --no-verify` is refused as well, since it would skip the lefthook check
 - A lefthook `commit-msg` command (`.claude/hooks/no-commit-on-main.sh`) refuses any commit on `main`/`master`, empty ones included, except a new repository's first commit. It runs in `commit-msg` because lefthook skips `pre-commit` when nothing is staged
 - The hook tests run the push and commit cases in throwaway repositories, so the result doesn't depend on the checkout's branch
 
