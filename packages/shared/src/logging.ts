@@ -7,7 +7,8 @@ export const LOG_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace", "
  * matches one level, so both header spellings are listed (Node lowercases incoming headers; outgoing `fetch`
  * headers keep their case) at the top level and one level down. A Node request's `rawHeaders` array repeats
  * its headers, and paths can't name array entries, so it is redacted whole. `cookies` and the Auth.js session
- * cookie names (dotted, so in brackets) are redacted as keys too. A safety net only: call sites still never
+ * cookie names (dotted, so in brackets) are redacted as keys too, and so are a room's invite token and link
+ * (bearer secrets, ADR 0003). A safety net only: call sites still never
  * log secrets, and log a request as `req` and a response as `res` so the loggers' serializers apply.
  */
 export const LOG_REDACT_PATHS = [
@@ -43,4 +44,8 @@ export const LOG_REDACT_PATHS = [
   '*["__Secure-authjs.session-token"]',
   "rawHeaders",
   "*.rawHeaders",
+  "inviteToken",
+  "*.inviteToken",
+  "inviteUrl",
+  "*.inviteUrl",
 ] as const;

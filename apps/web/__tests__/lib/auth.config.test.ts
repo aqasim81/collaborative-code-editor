@@ -104,6 +104,7 @@ describe("authorized callback", () => {
     "/dashboard",
     "/dashboard/settings",
     "/room/abc123",
+    "/join/some-invite-token",
   ])("blocks signed-out visitors from %s", (pathname) => {
     expect(authorizedFor(pathname, false)).toBe(false);
   });
@@ -124,6 +125,8 @@ describe("isProtectedPath", () => {
     expect(isProtectedPath("/room")).toBe(true);
     expect(isProtectedPath("/roomy")).toBe(false);
     expect(isProtectedPath("/dashboards")).toBe(false);
+    expect(isProtectedPath("/join/tok")).toBe(true);
+    expect(isProtectedPath("/joined")).toBe(false);
   });
 });
 

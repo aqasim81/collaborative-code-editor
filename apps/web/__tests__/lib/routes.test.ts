@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { roomPath, signInRedirect } from "@/lib/routes";
+import { invitePath, roomPath, signInRedirect } from "@/lib/routes";
 
 describe("routes", () => {
   it("builds a room's path", () => {
     expect(roomPath("r1")).toBe("/room/r1");
+  });
+
+  it("puts an invite token under /join", () => {
+    expect(invitePath("tok")).toBe("/join/tok");
   });
 
   it("encodes the callback path of a sign-in redirect", () => {

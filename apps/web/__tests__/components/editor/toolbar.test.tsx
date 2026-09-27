@@ -34,4 +34,17 @@ describe("Toolbar", () => {
 
     expect(onLanguageChange).toHaveBeenCalledWith("python");
   });
+
+  it("renders room actions next to the language picker", () => {
+    render(
+      <Toolbar
+        roomName="Pairing"
+        language="javascript"
+        onLanguageChange={vi.fn()}
+        actions={<button type="button">Share</button>}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+  });
 });

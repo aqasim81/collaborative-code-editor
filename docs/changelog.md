@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Secret invite links (#36)
+- Every room has a secret invite token (`Room.inviteToken`, 32 random bytes as 43 base64url characters, unique); the migration backfills existing rooms in the same format
+- The room owner's toolbar has a Share button: it copies `/join/<token>` with a toast, shows the link in a dialog, and resets it after a confirmation (the old link stops working, members keep access). Nobody else sees it
+- `/join/<token>` requires sign-in and returns to the link afterwards; it shows who invited you to which room, and the Join button (a POST, never on page load) adds you as an EDITOR and opens the room. Malformed, unknown and reset tokens get the same 404
+- Both loggers redact `inviteToken` and `inviteUrl` keys (top level and one level down)
+- ADR 0003 records the token model; Invariant 2 now says only a valid invite token grants membership
+- Tests: token format, room queries, join and reset actions, the invite page, the owner-only prop on the room page, the Share button
+
 ### Response objects and near-miss secret keys in logs (#57)
 - Both loggers serialize a Node response logged as `res`: status and headers only, never its request, with `set-cookie` redacted
 - `cookies` and the Auth.js session cookie names (`authjs.session-token`, `__Secure-authjs.session-token`) are redacted as keys, at the top level and one level down

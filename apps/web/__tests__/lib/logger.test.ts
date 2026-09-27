@@ -175,6 +175,25 @@ describe("createWebLogger (#54, #55, #57)", () => {
     expect(JSON.stringify(lines())).not.toContain("secret");
   });
 
+  it("redacts invite tokens and links at the top level and one level down (#36)", async () => {
+    const { createWebLogger } = await import("@/lib/logger");
+    const { stream, lines } = captureLogs();
+    const logger = createWebLogger("info", stream);
+
+    logger.info(
+      { inviteToken: "secret", inviteUrl: "https://s.test/join/secret", roomId: "r1" },
+      "a",
+    );
+    logger.info({ room: { id: "r1", inviteToken: "secret", inviteUrl: "secret" } }, "b");
+
+    const [a, b] = lines();
+    expect(a).toMatchObject({ inviteToken: "[Redacted]", inviteUrl: "[Redacted]", roomId: "r1" });
+    expect(b).toMatchObject({
+      room: { id: "r1", inviteToken: "[Redacted]", inviteUrl: "[Redacted]" },
+    });
+    expect(JSON.stringify(lines())).not.toContain("secret");
+  });
+
   it("still logs an error's message and stack under err", async () => {
     const { createWebLogger } = await import("@/lib/logger");
     const { stream, lines } = captureLogs();

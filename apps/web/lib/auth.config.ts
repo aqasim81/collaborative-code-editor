@@ -11,7 +11,7 @@ import { SIGN_IN_PATH } from "@/lib/routes";
 // provider's issuer, which the built-in GitHub provider leaves unset.
 const GITHUB_OAUTH_ISSUER = "https://github.com/login/oauth";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/room"] as const;
+const PROTECTED_PREFIXES = ["/dashboard", "/join", "/room"] as const;
 
 export function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(

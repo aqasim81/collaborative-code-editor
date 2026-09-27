@@ -1,4 +1,5 @@
 import type { Room, RoomRole } from "@prisma/client";
+import { generateInviteToken } from "@/lib/invite";
 import { type LanguageId, toLanguageId } from "@/lib/languages";
 import { prisma } from "@/lib/prisma";
 
@@ -28,6 +29,17 @@ export function findRoomForMember(roomId: string, userId: string): Promise<Room 
   });
 }
 
+/** The user's membership of a room, with the room; null for a non-member or a missing room (Invariant 2). */
+export function findMembership(
+  roomId: string,
+  userId: string,
+): Promise<{ role: RoomRole; room: Room } | null> {
+  return prisma.roomMember.findUnique({
+    where: { roomId_userId: { roomId, userId } },
+    select: { role: true, room: true },
+  });
+}
+
 /** The user's role in a room; null for a non-member or a missing room. */
 export async function findMemberRole(roomId: string, userId: string): Promise<RoomRole | null> {
   const membership = await prisma.roomMember.findUnique({
@@ -54,6 +66,11 @@ export async function listRoomsForMember(userId: string): Promise<RoomSummary[]>
   }));
 }
 
+/** Matches the room only if the user is its OWNER: the filter every owner-only write uses. */
+function ownedRoomWhere(roomId: string, userId: string) {
+  return { id: roomId, members: { some: { userId, role: "OWNER" as const } } };
+}
+
 /** Creates a room and its OWNER membership in one write, so a room never exists without a member. */
 export function createRoomWithOwner(input: {
   name: string;
@@ -65,10 +82,46 @@ export function createRoomWithOwner(input: {
       name: input.name,
       language: input.language,
       creatorId: input.userId,
+      inviteToken: generateInviteToken(),
       members: { create: { userId: input.userId, role: "OWNER" } },
     },
     select: { id: true },
   });
+}
+
+/** The room an invite token belongs to, with what the invite page shows; null for an unknown token. */
+export function findRoomByInviteToken(
+  token: string,
+): Promise<{ id: string; name: string; creator: { name: string | null } } | null> {
+  return prisma.room.findUnique({
+    where: { inviteToken: token },
+    select: { id: true, name: true, creator: { select: { name: true } } },
+  });
+}
+
+/**
+ * Makes the user an EDITOR of the room. Idempotent, and never touches an existing membership, so an
+ * OWNER who opens their own link stays OWNER.
+ */
+export async function addEditorMember(roomId: string, userId: string): Promise<void> {
+  await prisma.roomMember.upsert({
+    where: { roomId_userId: { roomId, userId } },
+    update: {},
+    create: { roomId, userId, role: "EDITOR" },
+  });
+}
+
+/**
+ * Replaces the room's invite token, so the old link stops working, only if the user owns the room.
+ * Returns the new token, or null when nothing matched. Existing members keep their membership.
+ */
+export async function rotateInviteToken(roomId: string, userId: string): Promise<string | null> {
+  const inviteToken = generateInviteToken();
+  const { count } = await prisma.room.updateMany({
+    where: ownedRoomWhere(roomId, userId),
+    data: { inviteToken },
+  });
+  return count > 0 ? inviteToken : null;
 }
 
 /**
@@ -79,7 +132,7 @@ export function createRoomWithOwner(input: {
 export function deleteOwnedRoom(roomId: string, userId: string): Promise<number> {
   return prisma.$transaction(async (tx) => {
     const { count } = await tx.room.deleteMany({
-      where: { id: roomId, members: { some: { userId, role: "OWNER" } } },
+      where: ownedRoomWhere(roomId, userId),
     });
     if (count > 0) {
       await tx.roomPurge.create({ data: { roomId, userId } });

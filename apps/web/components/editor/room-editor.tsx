@@ -1,9 +1,10 @@
 "use client";
 
 import type { SessionUser } from "@collab-editor/shared";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { PresenceList } from "@/components/room/presence-list";
 import { RoomProvider, useRoom } from "@/components/room/room-provider";
+import { ShareRoomButton } from "@/components/room/share-room-button";
 import type { LanguageId } from "@/lib/languages";
 import { CodeEditor } from "./code-editor";
 import { ConnectionStatus } from "./connection-status";
@@ -17,16 +18,19 @@ interface RoomEditorProps {
   user: SessionUser;
   /** WS server URL, from the server component's validated env. */
   serverUrl: string;
+  /** The room's invite link for its owner; null for everyone else (ADR 0003). */
+  inviteUrl: string | null;
 }
 
 interface RoomViewProps {
   roomName: string;
+  actions: ReactNode;
   selfId: string;
   language: LanguageId;
   onLanguageChange: (language: LanguageId) => void;
 }
 
-function RoomView({ roomName, selfId, language, onLanguageChange }: RoomViewProps) {
+function RoomView({ roomName, actions, selfId, language, onLanguageChange }: RoomViewProps) {
   const { text, awareness, status, error, reloadHint } = useRoom();
   return (
     <div className="flex h-full flex-col">
@@ -35,6 +39,7 @@ function RoomView({ roomName, selfId, language, onLanguageChange }: RoomViewProp
         status={<ConnectionStatus status={status} error={error} />}
         language={language}
         onLanguageChange={onLanguageChange}
+        actions={actions}
       />
       {error ? (
         <p
@@ -74,8 +79,11 @@ export function RoomEditor({
   initialLanguage,
   user,
   serverUrl,
+  inviteUrl,
 }: RoomEditorProps) {
   const [language, setLanguage] = useState<LanguageId>(initialLanguage);
+  const actions =
+    inviteUrl === null ? null : <ShareRoomButton roomId={roomId} initialInviteUrl={inviteUrl} />;
 
   return (
     <RoomProvider
@@ -89,11 +97,13 @@ export function RoomEditor({
           status={<ConnectionStatus status="connecting" error={null} />}
           language={language}
           onLanguageChange={setLanguage}
+          actions={actions}
         />
       }
     >
       <RoomView
         roomName={roomName}
+        actions={actions}
         selfId={user.id}
         language={language}
         onLanguageChange={setLanguage}

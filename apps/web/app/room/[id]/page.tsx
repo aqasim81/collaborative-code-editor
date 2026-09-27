@@ -4,8 +4,9 @@ import { RoomEditor } from "@/components/editor/room-editor";
 import { auth } from "@/lib/auth";
 import { toSessionUser } from "@/lib/auth.config";
 import { env } from "@/lib/env";
+import { inviteUrl } from "@/lib/invite";
 import { toLanguageId } from "@/lib/languages";
-import { findRoomForMember } from "@/lib/rooms";
+import { findMembership } from "@/lib/rooms";
 import { roomPath, signInRedirect } from "@/lib/routes";
 
 export const metadata: Metadata = {
@@ -24,10 +25,11 @@ export default async function RoomPage({ params }: RoomPageProps) {
   }
 
   // Invariant 2: membership, not the room id, grants access.
-  const room = await findRoomForMember(id, user.id);
-  if (!room) {
+  const membership = await findMembership(id, user.id);
+  if (!membership) {
     notFound();
   }
+  const { room, role } = membership;
 
   // The navbar is 3.5rem tall plus a 1px bottom border.
   return (
@@ -38,6 +40,9 @@ export default async function RoomPage({ params }: RoomPageProps) {
         initialLanguage={toLanguageId(room.language)}
         user={user}
         serverUrl={env.NEXT_PUBLIC_WS_URL}
+        // The invite token is a secret only the owner is shown (ADR 0003). Built here, not fetched on
+        // click, so the Share button can copy it within the click.
+        inviteUrl={role === "OWNER" ? inviteUrl(room.inviteToken, env.NEXT_PUBLIC_SITE_URL) : null}
       />
     </main>
   );

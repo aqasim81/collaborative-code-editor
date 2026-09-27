@@ -6,11 +6,11 @@ import { findServerValues } from "../helpers/client-props";
 
 type RoomEditorProps = ComponentProps<typeof RoomEditor>;
 
-const { auth, findRoomForMember, notFound, redirect, roomEditorProps } = vi.hoisted(() => ({
+const { auth, findMembership, notFound, redirect, roomEditorProps } = vi.hoisted(() => ({
   auth: vi.fn(),
   // Records the props the Server Component hands across the client boundary.
   roomEditorProps: vi.fn(),
-  findRoomForMember: vi.fn(),
+  findMembership: vi.fn(),
   // Next's helpers throw to stop rendering; mirror that so the page stops too.
   notFound: vi.fn(() => {
     throw new Error("NEXT_NOT_FOUND");
@@ -21,7 +21,7 @@ const { auth, findRoomForMember, notFound, redirect, roomEditorProps } = vi.hois
 }));
 
 vi.mock("@/lib/auth", () => ({ auth }));
-vi.mock("@/lib/rooms", () => ({ findRoomForMember }));
+vi.mock("@/lib/rooms", () => ({ findMembership }));
 vi.mock("next/navigation", () => ({ notFound, redirect }));
 vi.mock("@/components/editor/room-editor", () => ({
   RoomEditor: (props: RoomEditorProps) => {
@@ -37,6 +37,7 @@ vi.mock("@/components/editor/room-editor", () => ({
 import RoomPage from "@/app/room/[id]/page";
 
 const params = Promise.resolve({ id: "r1" });
+const TOKEN = "T".repeat(43);
 
 describe("room page (Invariant 2)", () => {
   beforeEach(() => {
@@ -49,20 +50,23 @@ describe("room page (Invariant 2)", () => {
     await expect(RoomPage({ params })).rejects.toThrow(
       "NEXT_REDIRECT /sign-in?callbackUrl=%2Froom%2Fr1",
     );
-    expect(findRoomForMember).not.toHaveBeenCalled();
+    expect(findMembership).not.toHaveBeenCalled();
   });
 
   it("returns 404 when the user is not a member", async () => {
     auth.mockResolvedValueOnce({ user: { id: "u2", name: "Eve" } });
-    findRoomForMember.mockResolvedValueOnce(null);
+    findMembership.mockResolvedValueOnce(null);
 
     await expect(RoomPage({ params })).rejects.toThrow("NEXT_NOT_FOUND");
-    expect(findRoomForMember).toHaveBeenCalledWith("r1", "u2");
+    expect(findMembership).toHaveBeenCalledWith("r1", "u2");
   });
 
   it("renders the editor for a member with the room's language", async () => {
     auth.mockResolvedValueOnce({ user: { id: "u1", name: "Ada", image: "https://a.test/u1" } });
-    findRoomForMember.mockResolvedValueOnce({ id: "r1", name: "Pairing", language: "cobol" });
+    findMembership.mockResolvedValueOnce({
+      role: "EDITOR",
+      room: { id: "r1", name: "Pairing", language: "cobol", inviteToken: TOKEN },
+    });
 
     render(await RoomPage({ params }));
 
@@ -77,7 +81,10 @@ describe("room page (Invariant 2)", () => {
     auth.mockResolvedValueOnce({
       user: { id: "u1", name: "Ada", image: null, email: "ada@example.test" },
     });
-    findRoomForMember.mockResolvedValueOnce({ id: "r1", name: "Pairing", language: "python" });
+    findMembership.mockResolvedValueOnce({
+      role: "EDITOR",
+      room: { id: "r1", name: "Pairing", language: "python", inviteToken: TOKEN },
+    });
 
     render(await RoomPage({ params }));
 
@@ -88,7 +95,30 @@ describe("room page (Invariant 2)", () => {
       initialLanguage: "python",
       serverUrl: "ws://localhost:8080",
       user: { id: "u1", name: "Ada", image: null },
+      inviteUrl: null,
     });
     expect(findServerValues(roomEditorProps.mock.calls[0]?.[0])).toEqual([]);
+  });
+
+  it("hands the owner, and only the owner, the room's invite link (ADR 0003)", async () => {
+    auth.mockResolvedValueOnce({ user: { id: "u1", name: "Ada", image: null } });
+    findMembership.mockResolvedValueOnce({
+      role: "OWNER",
+      room: { id: "r1", name: "Pairing", language: "python", inviteToken: TOKEN },
+    });
+
+    render(await RoomPage({ params }));
+
+    const props = roomEditorProps.mock.calls[0]?.[0];
+    expect(Object.keys(props ?? {}).sort()).toEqual([
+      "initialLanguage",
+      "inviteUrl",
+      "roomId",
+      "roomName",
+      "serverUrl",
+      "user",
+    ]);
+    expect(props?.inviteUrl).toBe(`http://localhost:3000/join/${TOKEN}`);
+    expect(findServerValues(props)).toEqual([]);
   });
 });

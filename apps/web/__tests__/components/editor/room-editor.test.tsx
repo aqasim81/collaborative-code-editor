@@ -48,10 +48,15 @@ vi.mock("@/components/room/room-provider", () => ({
   ),
   useRoom: () => room.value,
 }));
+vi.mock("@/components/room/share-room-button", () => ({
+  ShareRoomButton: ({ roomId, initialInviteUrl }: { roomId: string; initialInviteUrl: string }) => (
+    <button type="button">{`Share ${roomId} ${initialInviteUrl}`}</button>
+  ),
+}));
 
 import { RoomEditor } from "@/components/editor/room-editor";
 
-function renderEditor() {
+function renderEditor(inviteUrl: string | null = null) {
   render(
     <RoomEditor
       roomId="r1"
@@ -59,6 +64,7 @@ function renderEditor() {
       initialLanguage="go"
       user={{ id: "u1", name: "Ada", image: null }}
       serverUrl="ws://ws.test"
+      inviteUrl={inviteUrl}
     />,
   );
 }
@@ -146,6 +152,20 @@ describe("RoomEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
 
     expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("shows Share only when it has an invite link (the owner's page)", () => {
+    renderEditor("https://site.test/join/tok");
+
+    expect(
+      screen.getByRole("button", { name: "Share r1 https://site.test/join/tok" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no Share button without an invite link", () => {
+    renderEditor(null);
+
+    expect(screen.queryByRole("button", { name: /^Share/ })).not.toBeInTheDocument();
   });
 
   afterEach(() => {

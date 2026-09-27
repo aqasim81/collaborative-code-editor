@@ -99,7 +99,7 @@ Postgres holds identity and room metadata; document content lives in LevelDB on 
 | Model | Purpose |
 |-------|---------|
 | `User`, `Account`, `Session` | Auth.js Prisma adapter models (`Session` unused under JWT sessions) |
-| `Room` | Room metadata: name, language, creator; `updatedAt` doubles as last activity (bumped when a member is issued a ticket, at most once a minute) |
+| `Room` | Room metadata: name, language, creator, `inviteToken` (unique secret for the invite link, ADR 0003); `updatedAt` doubles as last activity (bumped when a member is issued a ticket, at most once a minute) |
 | `RoomMember` | Membership (`OWNER` / `EDITOR`), keyed by `(roomId, userId)`; grants room access (Invariant 2) |
 | `RoomPurge` | Outbox of deleted rooms whose WS-server document still has to be purged (`attempts`, `nextAttemptAt`, `lastError`); no relation, the room is gone (#48) |
 
@@ -123,6 +123,20 @@ Postgres holds identity and room metadata; document content lives in LevelDB on 
   document. A failure keeps the row and backs off (1 min doubling to 1 h); dashboard loads retry due rows at most
   once a minute (#48, ADR 0001 addendum).
 
+## Invite links (#36)
+
+See [ADR 0003](adr/0003-secret-invite-links.md).
+
+- **Token:** `Room.inviteToken`, 32 random bytes as 43 base64url characters, set when the room is created
+  (`lib/invite.ts`, server-only). Only the OWNER's room page builds the link and passes it to `RoomEditor` as
+  `inviteUrl`; the Share button (`components/room/share-room-button.tsx`) copies it inside the click, shows it in a
+  dialog, and can reset it.
+- **Join:** `/join/<token>` (protected by middleware) redirects signed-out visitors to sign-in and back; the page
+  renders a confirmation and never writes. Its Join form posts to `joinRoomAction` (`actions/invite.ts`), which
+  upserts an `EDITOR` membership and redirects to the room. Malformed, unknown and reset tokens get the same 404.
+- **Reset:** `resetInviteLink(roomId)` rotates the token in an ownership-scoped `updateMany`; the old link 404s,
+  members keep access. An editor is told only the owner can reset; a non-member gets "Room not found".
+
 ## Logging (#51)
 
 - **Web app:** server code logs through `apps/web/lib/logger.ts`, a pino logger named `web` (JSON on stdout, no
@@ -145,7 +159,7 @@ Postgres holds identity and room metadata; document content lives in LevelDB on 
   `ServerResponse` logged as `res` prints `{ statusCode, headers }` without its request (whose cookie would otherwise
   print through `res.req`); `set-cookie` in those headers is redacted. A fetch `Response` is not one. The paths also
   cover `cookies` and the Auth.js cookie names `authjs.session-token` and `__Secure-authjs.session-token` as keys,
-  at the top level and one level down.
+  at the top level and one level down, and a room's `inviteToken` and `inviteUrl` (#36).
 - **Call-site guard (#57):** requests are logged as `req` and responses as `res`, never raw under another key. A
   source scan in each app (`__tests__/log-call-sites.test.ts` in the WS server,
   `__tests__/invariants/log-call-sites.test.ts` in the web app) fails on a `<logger>.<level>({ ... })` call (child loggers included) whose
@@ -163,7 +177,7 @@ Postgres holds identity and room metadata; document content lives in LevelDB on 
 
 - `apps/web/lib/auth.config.ts` — edge-safe Auth.js config (GitHub provider, JWT callbacks, `authorized` route check); used by `middleware.ts`
 - `apps/web/lib/auth.ts` — adds the Prisma adapter; exports `auth`, `signIn`, `signOut`, `handlers`
-- `middleware.ts` redirects signed-out requests for `/dashboard/*` and `/room/*` to `/sign-in?callbackUrl=…`; the sign-in action only follows same-origin callbacks
+- `middleware.ts` redirects signed-out requests for `/dashboard/*`, `/join/*` and `/room/*` to `/sign-in?callbackUrl=…`; the sign-in action only follows same-origin callbacks
 - The session JWT carries `id`, `name` and `picture`; it is a JWE encrypted with `AUTH_SECRET` (see ADR 0001)
 - `apps/web/lib/env.ts` validates environment variables with Zod when `next.config.ts` loads
 

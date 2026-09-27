@@ -1,5 +1,6 @@
 // Dev-only seed: one room owned by the first user, so /room/<id> can be tried before
 // room management exists. Idempotent: running it again leaves the same rows in place.
+import { randomBytes } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 
 const SEED_ROOM_ID = "seed-room";
@@ -16,7 +17,13 @@ async function main(): Promise<number> {
     await prisma.room.upsert({
       where: { id: SEED_ROOM_ID },
       update: {},
-      create: { id: SEED_ROOM_ID, name: "Seed room", creatorId: owner.id },
+      create: {
+        id: SEED_ROOM_ID,
+        name: "Seed room",
+        creatorId: owner.id,
+        // Same format as lib/invite.ts generateInviteToken(), which this script can't import (no @/ alias).
+        inviteToken: randomBytes(32).toString("base64url"),
+      },
     });
     await prisma.roomMember.upsert({
       where: { roomId_userId: { roomId: SEED_ROOM_ID, userId: owner.id } },

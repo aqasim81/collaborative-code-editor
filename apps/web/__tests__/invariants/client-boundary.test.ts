@@ -12,6 +12,7 @@ import { readAppSourceFiles } from "../helpers/source-files";
 // Paths are relative to the web app root, with forward slashes.
 const SERVER_ONLY_MODULES = new Set([
   "lib/env.ts",
+  "lib/invite.ts",
   "lib/logger.ts",
   "lib/auth.ts",
   "lib/auth.config.ts",
