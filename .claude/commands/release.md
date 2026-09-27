@@ -24,6 +24,11 @@ If `docs/` or `CLAUDE.md` does not exist, tell the user: "Project not initialize
 
 ## 2. Determine Release Type (PAUSE FOR USER)
 
+Release from an up-to-date `main`, so the version reflects everything merged:
+```bash
+git switch main && git pull --tags
+```
+
 ### Check current version:
 ```bash
 git tag --sort=-v:refname | head -5
@@ -62,10 +67,9 @@ ASK: "Confirm the version for this release (suggested: v{X.Y.Z}), or specify a d
 
 ## 3. Pre-Release Validation
 
-`main` is protected (PRs only, required checks, admins included), so the release is made on a branch cut from an
-up-to-date `main`:
+`main` is protected (PRs only, required checks, admins included), so the release is made on a branch cut from the
+`main` pulled in §2:
 ```bash
-git switch main && git pull
 git switch -c chore/release-vX.Y.Z
 ```
 
@@ -160,11 +164,13 @@ If the merge is refused because the branch is behind `main` (strict protection: 
 ran), run `gh pr update-branch {PR}`, watch the checks again, then merge. Never bypass the protection.
 
 ### Tag the merge commit on `main`:
-Tag the squash-merge commit, never the branch commit (it is not on `main`). Only the tag is pushed.
+Tag the release PR's squash-merge commit: not the branch commit (it is not on `main`), and not `main`'s tip (another
+PR may have merged since). Only the tag is pushed.
 ```bash
 git switch main && git pull
-git log -1 --oneline   # must be the "chore(release): vX.Y.Z" merge commit
-git tag -a vX.Y.Z -m "Release vX.Y.Z"
+sha=$(gh pr view {PR} --json mergeCommit -q .mergeCommit.oid)
+git log -1 --oneline "$sha"   # the "chore(release): vX.Y.Z" merge commit
+git tag -a vX.Y.Z "$sha" -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
