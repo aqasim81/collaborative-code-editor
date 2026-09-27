@@ -191,6 +191,8 @@ git switch main && git pull
 If the merge is refused because the branch is behind `main` (strict protection: something merged while the checks
 ran), run `gh pr update-branch {PR}`, watch the checks again, then merge. Never bypass the protection.
 
+If waiting for review, merge the same way once approved. Do not continue to §9 until the PR is merged.
+
 ---
 
 ## 9. Deploy and Verify (PAUSE FOR USER)
@@ -235,7 +237,12 @@ If the hotfix did not include a test (expedited path):
 - Update `docs/status.md` if applicable
 - Commit: `docs: record hotfix (#{issue})`
 
-Push the branch, open one PR for the follow-ups (`Refs #{issue}`; the hotfix PR already closed it) and merge it as in §8.
+Push the branch and open one PR for the follow-ups, then merge it as in §8:
+```bash
+git push -u origin chore/{issue-number}-hotfix-followup
+gh pr create --title "chore: hotfix follow-ups (#{issue})" --body "Refs #{issue}"
+```
+(`Refs`, not `Closes`: the hotfix PR already closed the issue.)
 
 ### 10d. Post-Mortem (for Critical Issues)
 If the issue caused downtime > 15 minutes or affected > 100 users, create a post-mortem:

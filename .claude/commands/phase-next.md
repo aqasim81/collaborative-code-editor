@@ -28,7 +28,7 @@ If ALL phases are complete: "All phases complete — project is finished!"
 
 ### Resuming Mid-Phase
 
-If some workflow steps are already checked, skip to the first unchecked step (Plan → Implement → Review → Test → Fix → Update checklist).
+If some workflow steps are already checked, skip to the first unchecked step (Plan → Implement → Review → Test → Fix → Update checklist). If on `main`, branch first as in step 6: the later steps commit too.
 
 ## 3. Read Phase Details
 
