@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { IncomingMessage } from "node:http";
+import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { captureLogs } from "../helpers/logger";
@@ -19,7 +19,7 @@ describe("logger (#51)", () => {
   });
 });
 
-describe("createWebLogger (#54, #55)", () => {
+describe("createWebLogger (#54, #55, #57)", () => {
   it("redacts tickets, tokens, authorization headers and the ticket subprotocol in either case, and keeps other fields", async () => {
     const { createWebLogger } = await import("@/lib/logger");
     const { stream, lines } = captureLogs();
@@ -66,7 +66,7 @@ describe("createWebLogger (#54, #55)", () => {
     logger.info(
       {
         headers: { "set-cookie": ["session=secret"] },
-        res: { headers: { "Set-Cookie": ["session=secret"], "set-cookie": ["session=secret"] } },
+        reply: { headers: { "Set-Cookie": ["session=secret"], "set-cookie": ["session=secret"] } },
       },
       "c",
     );
@@ -76,7 +76,7 @@ describe("createWebLogger (#54, #55)", () => {
     expect(b).toMatchObject({ req: { headers: { cookie: "[Redacted]" } } });
     expect(c).toMatchObject({
       headers: { "set-cookie": "[Redacted]" },
-      res: { headers: { "Set-Cookie": "[Redacted]", "set-cookie": "[Redacted]" } },
+      reply: { headers: { "Set-Cookie": "[Redacted]", "set-cookie": "[Redacted]" } },
     });
     expect(JSON.stringify(lines())).not.toContain("secret");
   });
@@ -115,5 +115,75 @@ describe("createWebLogger (#54, #55)", () => {
     expect(line?.req).not.toHaveProperty("rawHeaders");
     expect(other).toMatchObject({ request: { rawHeaders: "[Redacted]" } });
     expect(JSON.stringify(lines())).not.toContain("secret");
+  });
+
+  it("logs a Node response as res without its request and with set-cookie redacted", async () => {
+    const { createWebLogger } = await import("@/lib/logger");
+    const { stream, lines } = captureLogs();
+    const logger = createWebLogger("info", stream);
+    const req = new IncomingMessage(new Socket());
+    req.headers = { cookie: "session=secret" };
+    const res = new ServerResponse(req);
+    res.setHeader("set-cookie", ["session=secret"]);
+    res.setHeader("content-type", "text/plain");
+
+    logger.info({ res }, "response");
+
+    const [line] = lines();
+    expect(line).toMatchObject({
+      res: {
+        statusCode: null,
+        headers: { "set-cookie": "[Redacted]", "content-type": "text/plain" },
+      },
+    });
+    expect(line?.res).not.toHaveProperty("req");
+    expect(JSON.stringify(lines())).not.toContain("secret");
+  });
+
+  it("redacts cookies and Auth.js session cookie names at the top level and one level down", async () => {
+    const { createWebLogger } = await import("@/lib/logger");
+    const { stream, lines } = captureLogs();
+    const logger = createWebLogger("info", stream);
+
+    logger.info(
+      {
+        cookies: { session: "secret" },
+        "authjs.session-token": "secret",
+        "__Secure-authjs.session-token": "secret",
+        jar: {
+          cookies: ["session=secret"],
+          "authjs.session-token": "secret",
+          "__Secure-authjs.session-token": "secret",
+          host: "h",
+        },
+      },
+      "a",
+    );
+
+    const [a] = lines();
+    expect(a).toMatchObject({
+      cookies: "[Redacted]",
+      "authjs.session-token": "[Redacted]",
+      "__Secure-authjs.session-token": "[Redacted]",
+      jar: {
+        cookies: "[Redacted]",
+        "authjs.session-token": "[Redacted]",
+        "__Secure-authjs.session-token": "[Redacted]",
+        host: "h",
+      },
+    });
+    expect(JSON.stringify(lines())).not.toContain("secret");
+  });
+
+  it("still logs an error's message and stack under err", async () => {
+    const { createWebLogger } = await import("@/lib/logger");
+    const { stream, lines } = captureLogs();
+    const logger = createWebLogger("info", stream);
+
+    logger.error({ err: new Error("boom") }, "failed");
+
+    const [line] = lines();
+    expect(line).toMatchObject({ err: { type: "Error", message: "boom" } });
+    expect(line?.err).toHaveProperty("stack", expect.stringContaining("Error: boom"));
   });
 });

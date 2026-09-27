@@ -141,6 +141,16 @@ Postgres holds identity and room metadata; document content lives in LevelDB on 
   paths can't name array entries, so it is redacted whole). Both loggers set `serializers: { req:
   pino.stdSerializers.req }`: log a request as `req` and it prints as `{ id, method, url, headers, remoteAddress,
   remotePort }`, its headers then redacted by the paths above.
+- **Responses and near-miss keys (#57):** both loggers also set `res: pino.stdSerializers.res`, so a Node
+  `ServerResponse` logged as `res` prints `{ statusCode, headers }` without its request (whose cookie would otherwise
+  print through `res.req`); `set-cookie` in those headers is redacted. A fetch `Response` is not one. The paths also
+  cover `cookies` and the Auth.js cookie names `authjs.session-token` and `__Secure-authjs.session-token` as keys,
+  at the top level and one level down.
+- **Call-site guard (#57):** requests are logged as `req` and responses as `res`, never raw under another key. A
+  source scan in each app (`__tests__/log-call-sites.test.ts` in the WS server,
+  `__tests__/invariants/log-call-sites.test.ts` in the web app) fails on a `<logger>.<level>({ ... })` call (child loggers included) whose
+  object has a `request`, `response`, `socket` or `ctx` key, naming the file and line. It is a heuristic: a
+  variable passed to the logger escapes it.
 - **Known limit: depth.** `*` matches one level, so a secret two levels down (`{ a: { b: { ticket } } }`) prints in
   the clear. Call sites log flat objects; two-level wildcard paths are not added because pino's wildcard redaction
   cost grows with each level.

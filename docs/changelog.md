@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Response objects and near-miss secret keys in logs (#57)
+- Both loggers serialize a Node response logged as `res`: status and headers only, never its request, with `set-cookie` redacted
+- `cookies` and the Auth.js session cookie names (`authjs.session-token`, `__Secure-authjs.session-token`) are redacted as keys, at the top level and one level down
+- A test in each app scans log calls and fails on a raw `request`, `response`, `socket` or `ctx` key; requests are logged as `req`, responses as `res`
+- Invariant 6 now covers logs: loggers redact `LOG_REDACT_PATHS`
+- Tests: logger output in each app (a `ServerResponse` logged as `res`, the new keys redacted, `err` keeps message and stack)
+
 ### Cookie and raw request header redaction (#55)
 - Both loggers also redact `cookie` (as a key at the top level or one level down) and `set-cookie` (inside `headers`, at the top level or one level down), lowercase and capitalised, and a request's `rawHeaders` array
 - A request logged as `req` goes through pino's standard request serializer: method, url, headers and address only, no socket or `rawHeaders`

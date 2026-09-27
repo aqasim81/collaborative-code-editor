@@ -1,7 +1,7 @@
-import { readdirSync, readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
-import { join, posix, relative, sep } from "node:path";
+import { posix } from "node:path";
 import { describe, expect, it } from "vitest";
+import { readAppSourceFiles } from "../helpers/source-files";
 
 // Invariant 6: secrets stay out of the client. Every module that ends up in the client bundle must not
 // be a server-only module. A module is client code when it has "use client" or when client code imports
@@ -30,31 +30,11 @@ const SERVER_ONLY_PACKAGES = [
   "pino",
 ];
 const NODE_BUILTINS = new Set(builtinModules);
-const APP_ROOT = join(__dirname, "..", "..");
-// Skipped when reading the app from disk: dependencies, build output, tests, and (at the root only)
-// the Prisma schema and seed.
-const IGNORED_DIRS = new Set(["node_modules", ".next", ".turbo", "coverage", "__tests__"]);
-const IGNORED_ROOT_DIRS = new Set(["prisma"]);
 const RESOLVE_SUFFIXES = ["", ".ts", ".tsx", "/index.ts", "/index.tsx"];
 // Local imports of non-code assets (e.g. "./globals.css") are not modules in the graph.
 const ASSET_SPECIFIER = /\.(css|scss|svg|png|jpe?g|gif|webp|ico|woff2?)$/;
 
 type SourceFiles = ReadonlyMap<string, string>;
-
-function readSourceFiles(dir: string): [string, string][] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry): [string, string][] => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      const ignored =
-        IGNORED_DIRS.has(entry.name) || (dir === APP_ROOT && IGNORED_ROOT_DIRS.has(entry.name));
-      return ignored ? [] : readSourceFiles(path);
-    }
-    if (!/\.(ts|tsx)$/.test(entry.name) || entry.name.endsWith(".d.ts")) {
-      return [];
-    }
-    return [[relative(APP_ROOT, path).split(sep).join("/"), readFileSync(path, "utf8")]];
-  });
-}
 
 function hasDirective(source: string, directive: string): boolean {
   return new RegExp(`^(?:\\s|//[^\\n]*\\n|/\\*[\\s\\S]*?\\*/)*["']${directive}["']`).test(source);
@@ -205,7 +185,7 @@ function walkMiddlewareGraph(files: SourceFiles): { reached: Set<string>; violat
 // The app's source, read from disk once for the real-app walks.
 let appFiles: SourceFiles | undefined;
 function readAppFiles(): SourceFiles {
-  appFiles ??= new Map(readSourceFiles(APP_ROOT));
+  appFiles ??= new Map(readAppSourceFiles());
   return appFiles;
 }
 

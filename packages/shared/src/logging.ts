@@ -6,8 +6,9 @@ export const LOG_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace", "
  * session JWT) passed to a log call by mistake prints as `[Redacted]`. Matching is case-sensitive and `*`
  * matches one level, so both header spellings are listed (Node lowercases incoming headers; outgoing `fetch`
  * headers keep their case) at the top level and one level down. A Node request's `rawHeaders` array repeats
- * its headers, and paths can't name array entries, so it is redacted whole. A safety net only: call sites
- * still never log secrets.
+ * its headers, and paths can't name array entries, so it is redacted whole. `cookies` and the Auth.js session
+ * cookie names (dotted, so in brackets) are redacted as keys too. A safety net only: call sites still never
+ * log secrets, and log a request as `req` and a response as `res` so the loggers' serializers apply.
  */
 export const LOG_REDACT_PATHS = [
   "ticket",
@@ -34,6 +35,12 @@ export const LOG_REDACT_PATHS = [
   '*.headers["set-cookie"]',
   'headers["Set-Cookie"]',
   '*.headers["Set-Cookie"]',
+  "cookies",
+  "*.cookies",
+  '["authjs.session-token"]',
+  '*["authjs.session-token"]',
+  '["__Secure-authjs.session-token"]',
+  '*["__Secure-authjs.session-token"]',
   "rawHeaders",
   "*.rawHeaders",
 ] as const;

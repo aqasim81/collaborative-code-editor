@@ -10,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55). Next: invite links (#36). History, blockers and local setup: `docs/status.md`.
+Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55); responses, near-miss cookie keys and raw request objects in log calls are covered too (#57). Next: invite links (#36). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 
@@ -218,7 +218,7 @@ Rules that must never break. The `invariant-auditor` agent checks changes agains
 3. **Yjs is the only source of document truth.** Edits flow editor → Y.Doc → provider; never write editor state directly or merge text by hand. Every client converges to the same document.
 4. **No acknowledged update is lost.** An update the server has broadcast is persisted to LevelDB; restarting the server restores every room's document.
 5. **Presence is ephemeral.** Awareness state (cursors, names) is never persisted and is cleared when a client disconnects.
-6. **Secrets stay out of the client.** Only `NEXT_PUBLIC_*` values reach the browser; everything else goes through `lib/env.ts` on the server.
+6. **Secrets stay out of the client and out of logs.** Only `NEXT_PUBLIC_*` values reach the browser; everything else goes through `lib/env.ts` on the server; loggers redact `LOG_REDACT_PATHS`.
 
 ## Things Claude gets wrong
 
