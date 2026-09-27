@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Invariant 3's no-direct-writes half is guarded (#8)
-- `apps/web/__tests__/invariants/editor-writes.test.ts` scans `components/` and `lib/` and fails, naming file and line, on a `dispatch` with `changes` or `selection` (or of a prepared transaction), `setState`, `EditorState.create` with a `doc`, an `EditorView` seeded from anything but `<text>.toString()`, and Y.Text `insert`, `applyDelta` or two-argument `delete` outside `lib/yjs/`. Effects-only dispatches and Map/Set deletes pass; in-memory fixtures prove each rule, and the real scan must see the existing dispatches
+- `apps/web/__tests__/invariants/editor-writes.test.ts` scans `app/`, `components/` and `lib/` and fails, naming file and line, on a `dispatch` with `changes`, `selection` or a spread (or of a prepared transaction), `view.update([...])`, `setState`, `EditorState.create` with a `doc` or a prepared config, `EditorState.fromJSON`, an `EditorView` given a `state`, a prepared config or a `doc` other than `text.toString()`, and, outside `lib/yjs/`, Y.Text `insert`, `insertEmbed`, `applyDelta` or two-argument `delete` and `Y.applyUpdate`. Comments, strings and JSX text are stripped with the TypeScript parser, so an apostrophe or a `//` in a string can't hide later code. It is a heuristic on call text. Effects-only dispatches and Map/Set deletes pass; in-memory fixtures prove each rule, and the real scan must see the existing dispatches
 - `code-editor.test.tsx` checks the view equals the shared text after local typing, a remote update, undo, redo and a language switch
 
 ### Commits and pushes on main are refused locally (#6)

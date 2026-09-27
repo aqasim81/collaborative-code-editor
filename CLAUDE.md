@@ -10,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phases 1–7 complete. Phase 7 (room management and polish, #10): room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55); responses, near-miss cookie keys and raw request objects in log calls are covered too (#57); owners share rooms with a secret, resettable invite link that makes signed-in visitors editors (#36, ADR 0003); landing page, footer, tablet-width room (presence folds away below `lg`), typed room-join errors with a way forward, unreachable-server banner with Retry now, 404/error pages, sign-in failure messages and a Playwright production check (#37); the Bash guard blocks shell writes to protected paths (#62); README with a demo GIF recorded by `apps/web/e2e/record-demo.ts`, and an MIT licence (#38). The repository is public and `main` is protected (#1); commits and pushes on `main` are refused locally (#6); a source scan refuses editor and Y.Text writes outside the Yjs binding (#8). History, blockers and local setup: `docs/status.md`.
+Phases 1–7 complete. Phase 7 (room management and polish, #10): room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55); responses, near-miss cookie keys and raw request objects in log calls are covered too (#57); owners share rooms with a secret, resettable invite link that makes signed-in visitors editors (#36, ADR 0003); landing page, footer, tablet-width room (presence folds away below `lg`), typed room-join errors with a way forward, unreachable-server banner with Retry now, 404/error pages, sign-in failure messages and a Playwright production check (#37); the Bash guard blocks shell writes to protected paths (#62); README with a demo GIF recorded by `apps/web/e2e/record-demo.ts`, and an MIT licence (#38). The repository is public and `main` is protected (#1); commits and pushes on `main` are refused locally (#6); a source scan flags editor writes and Y.Text writes outside `lib/yjs/` (#8). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 
@@ -155,7 +155,9 @@ See `docs/architecture.md` and `docs/adr/` for diagrams and decisions.
 - **Helpers:** `apps/ws-server/__tests__/helpers/` (sockets, tickets, stores, Yjs clients, logger)
 - **Key suites:** `apps/ws-server/__tests__/collaboration.test.ts` runs the real y-websocket provider against
   the server (protocol drift); `apps/web/__tests__/invariants/client-boundary.test.ts` walks the client import graph (Invariant 6);
-  `apps/web/__tests__/invariants/editor-writes.test.ts` refuses editor and Y.Text writes outside `yCollab` (Invariant 3)
+  `apps/web/__tests__/invariants/editor-writes.test.ts` scans `app/`, `components/` and `lib/` for editor writes (transactions
+  with changes or selection, `setState`, a view or state not seeded from `text.toString()`) and Y.Text or Y.Doc writes
+  outside `lib/yjs/` (Invariant 3; a heuristic on call text)
 - **Harness guards:** `.claude/protected-paths.txt` blocks edits to `apps/web/components/ui/*` and
   `apps/web/prisma/migrations/*`; `guard-bash.sh` also blocks shell writes to protected paths (redirects, `tee`,
   `cp`/`mv`, `rm`, `sed -i`, script writers) but lets `prisma migrate`, `shadcn add` and `db:migrate` through, and
@@ -227,7 +229,7 @@ Rules that must never break. The `invariant-auditor` agent checks changes agains
 
 1. **The WS server never trusts a client.** Every connection presents a valid, unexpired JWT before it joins a room; every inbound message is validated (Zod) and rate-limited.
 2. **Room access is authorised per room.** A user only receives or sends updates for rooms they are a member of; room ID alone grants nothing; only a valid invite token (or creating the room) grants membership (ADR 0003).
-3. **Yjs is the only source of document truth.** Edits flow editor → Y.Doc → provider; never write editor state directly or merge text by hand. Every client converges to the same document. Guarded by `apps/web/__tests__/invariants/editor-writes.test.ts` (no editor or Y.Text writes outside the binding), `code-editor.test.tsx` (view equals the Y.Text through every kind of change) and `collaboration.test.ts` (convergence).
+3. **Yjs is the only source of document truth.** Edits flow editor → Y.Doc → provider; never write editor state directly or merge text by hand. Every client converges to the same document. Guarded by `apps/web/__tests__/invariants/editor-writes.test.ts` (a source scan for editor writes and for Y.Text or Y.Doc writes outside `lib/yjs/`), `code-editor.test.tsx` (view equals the Y.Text through every kind of change) and `collaboration.test.ts` (convergence).
 4. **No acknowledged update is lost.** An update the server has broadcast is persisted to LevelDB; restarting the server restores every room's document.
 5. **Presence is ephemeral.** Awareness state (cursors, names) is never persisted and is cleared when a client disconnects.
 6. **Secrets stay out of the client and out of logs.** Only `NEXT_PUBLIC_*` values reach the browser; everything else goes through `lib/env.ts` on the server; loggers redact `LOG_REDACT_PATHS`.
