@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Repository — public, protected main (#1, was #13)
+- `intent/`, `specs/`, `docs/templates/`, `docs/ENGINEERING_WORKFLOW.md` and `docs/REPO_STANDARDS.md` are local and gitignored; the workflow docs say so
+- History rewritten into a new public repo without those paths or co-author trailers (gitleaks clean); the old repo is the private `collaborative-code-editor-archive`, which keeps the earlier issues and PRs
+- `main` requires the `Verify` and `Build` checks, up to date with `main`, for admins too; linear history, no force pushes or deletions. Secret scanning and push protection are on
+
 ### The docs-only audit skip is an allow-list (#67)
 - The invariant audit is skipped only when every changed file is under `docs/` (not `docs/templates/`, which holds CI and script templates), or is `README.md` or `LICENSE` at the repo root. The old `*.md` glob also matched `CLAUDE.md` (which defines the invariants), `REVIEW.md` and `.claude/**/*.md` (including the auditor itself); a change to any of them now runs the audit. The rule is stated once, in `.claude/rules/ai-native-workflow.md` "Fresh eyes"; `/next-issue` and the checklist template point to it
 

@@ -18,11 +18,11 @@ Run this before picking the issue, and again just before printing `ISSUE <N> DON
 during the session are planned too). The rules are the "Intake" section of `plans/issues/README.md`:
 
 - `gh issue list --state open --limit 100 --json number,title`. Every open issue missing from the order table
-  (except the umbrella #10) is new.
+  is new (rows under the README's Archive section belong to the old repo and don't count).
 - For each new issue, read the code it touches, then write `plans/issues/<N>/implementation-plan.md` and
   `phases/phase-<k>-<name>.md` in the format of the existing folders, and `checklist.md` from
   `plans/issues/_checklist-template.md` (steps 1–6 per phase, issue-end steps 7–15, boxes unticked).
-- Add its row after the `in progress` row (or the last `done` row), never after #13, and renumber the order.
+- Add its row after the `in progress` row (or the last `done` row), and renumber the order.
 - Planning an issue is not working on it: continue with your own single issue.
 
 ## 1. Pick the issue
@@ -66,10 +66,11 @@ file in `plans/issues/<N>/phases/` when you plan that phase. Tick each box as so
 - **Merge without asking.** The owner has authorised merging inside this loop. Wait with
   `gh pr checks <PR> --watch` until every check is green, then
   `gh pr merge <PR> --squash --delete-branch --subject "<PR title>" --body "<short summary>"`.
+  `main` is protected (CLAUDE.md, Git Workflow): if the merge is refused because the branch is behind, run
+  `gh pr update-branch <PR>`, watch the checks again, then merge. Never bypass the protection.
   Then `git switch main && git pull` and wait for the `main` CI run for the merge commit to finish
   (`gh run list --branch main --limit 1`, `gh run watch <id> --exit-status`). It must succeed.
-- **Bookkeeping:** tick the checklist, set the README row to `done (#<PR>)`, and for Phase 7 issues tick
-  `plans/issues/10/checklist.md`. After #38 merges, close umbrella issue #10 with a comment.
+- **Bookkeeping:** tick the checklist and set the README row to `done (#<PR>)`.
 - **Close:** confirm the issue is `CLOSED`; if not, close it with a comment linking the PR.
 - **Intake and stop — do not start the next issue.** Run the intake (§0) again. Stop any dev server or other
   background process you started, make sure you are on a clean, pulled `main`, print `ISSUE <N> DONE` and end
@@ -78,11 +79,6 @@ file in `plans/issues/<N>/phases/` when you plan that phase. Tick each box as so
 A checklist with a 13-step loop per phase is the old format: follow the steps above. Tick a phase's steps 5–7
 once its targeted tests pass and it is committed (so resuming lands on the next phase), and tick every phase's
 step 8 with PR, 9 with Code review, 10 with Merge, 11 with Bookkeeping, 12 with Close and 13 with Intake and stop.
-
-## Issue #13
-
-Owner chose option B (see `plans/issues/13/`) on 2026-09-27, all the way: every phase of #13 is authorised, including the history rewrite,
-going public and protecting `main`.
 
 ## Blocked
 
