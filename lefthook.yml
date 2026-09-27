@@ -13,5 +13,7 @@ pre-push:
       run: make verify
 commit-msg:
   commands:
+    no-main: # here, not pre-commit: lefthook skips pre-commit when nothing is staged (--allow-empty)
+      run: bash .claude/hooks/no-commit-on-main.sh
     commitlint:
       run: pnpm exec commitlint --edit {1}
