@@ -48,12 +48,11 @@ ASK: "Ready to begin Phase {N}? Review the plan above or say 'go' to start."
 
 ## 6. Implement
 
-`main` is protected, so never commit on it. If on `main`, branch first:
+`main` is protected, so never commit on it. If on `main`, branch first (`{slug}` as in the phase file):
 ```bash
-git switch main && git pull
+git pull
 git switch -c feat/phase-{N}-{slug}
 ```
-(`{slug}` as in `plans/phases/phase-N-{slug}.md`.) Every commit from here on lands on that branch.
 
 Execute the plan from step 4. Commit after each logical chunk using conventional commits (follow CLAUDE.md conventions). If blocked, ASK — do not guess. Implement ALL tests from the phase plan.
 
@@ -82,4 +81,4 @@ Push the phase branch and create a PR using the `/commit-push-pr` workflow; the 
 
 ## 10. Report
 
-Summarize: phase name, what was built (1-3 bullets), tests/coverage results, commit count, PR URL (if created), and what's next.
+Summarize: phase name, what was built (1-3 bullets), tests/coverage results, commit count, PR URL, and what's next.

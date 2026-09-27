@@ -235,9 +235,7 @@ If the hotfix did not include a test (expedited path):
 - Update `docs/status.md` if applicable
 - Commit: `docs: record hotfix (#{issue})`
 
-Push the branch, open one PR for the follow-ups (`Refs #{issue}`; the hotfix PR already closed it) and merge it the
-same way as §8: `gh pr checks {PR} --watch`, `gh pr merge {PR} --squash --delete-branch`, `gh pr update-branch {PR}`
-when refused as behind, then `git switch main && git pull`.
+Push the branch, open one PR for the follow-ups (`Refs #{issue}`; the hotfix PR already closed it) and merge it as in §8.
 
 ### 10d. Post-Mortem (for Critical Issues)
 If the issue caused downtime > 15 minutes or affected > 100 users, create a post-mortem:
