@@ -28,7 +28,7 @@ If ALL phases are complete: "All phases complete — project is finished!"
 
 ### Resuming Mid-Phase
 
-If some workflow steps are already checked, skip to the first unchecked step (Plan → Implement → Review → Test → Fix → Update checklist). If on `main`, branch first as in step 6: the later steps commit too.
+If some workflow steps are already checked, skip to the first unchecked step (Plan → Implement → Review → Test → Fix → Update checklist). If on `main`, switch to the phase branch as in step 6 first: the later steps commit too.
 
 ## 3. Read Phase Details
 
@@ -48,10 +48,11 @@ ASK: "Ready to begin Phase {N}? Review the plan above or say 'go' to start."
 
 ## 6. Implement
 
-`main` is protected, so never commit on it. If on `main`, branch first (`{slug}` as in the phase file):
+`main` is protected, so never commit on it. If on `main`, switch to the phase branch, creating it only if it doesn't
+exist yet (locally or on origin; `{slug}` as in the phase file):
 ```bash
 git pull
-git switch -c feat/phase-{N}-{slug}
+git switch feat/phase-{N}-{slug} || git switch -c feat/phase-{N}-{slug}
 ```
 
 Execute the plan from step 4. Commit after each logical chunk using conventional commits (follow CLAUDE.md conventions). If blocked, ASK — do not guess. Implement ALL tests from the phase plan.
