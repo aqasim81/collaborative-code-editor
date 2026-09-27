@@ -48,6 +48,13 @@ ASK: "Ready to begin Phase {N}? Review the plan above or say 'go' to start."
 
 ## 6. Implement
 
+`main` is protected, so never commit on it. If on `main`, branch first:
+```bash
+git switch main && git pull
+git switch -c feat/phase-{N}-{slug}
+```
+(`{slug}` as in `plans/phases/phase-N-{slug}.md`.) Every commit from here on lands on that branch.
+
 Execute the plan from step 4. Commit after each logical chunk using conventional commits (follow CLAUDE.md conventions). If blocked, ASK — do not guess. Implement ALL tests from the phase plan.
 
 ## 7. Validate
@@ -71,7 +78,7 @@ Check every DoD item from `plans/phases/phase-N-{slug}.md` plus universal qualit
 
 ## 9.5. Create Pull Request
 
-If on a feature branch (not `main`), push and create a PR using the `/commit-push-pr` workflow. Include phase summary, test results, and coverage in the PR body.
+Push the phase branch and create a PR using the `/commit-push-pr` workflow; the PR is the only way the phase reaches `main`. Include phase summary, test results, and coverage in the PR body.
 
 ## 10. Report
 
