@@ -10,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55); responses, near-miss cookie keys and raw request objects in log calls are covered too (#57); owners share rooms with a secret, resettable invite link that makes signed-in visitors editors (#36, ADR 0003); landing page, footer, tablet-width room (presence folds away below `lg`), typed room-join errors with a way forward, unreachable-server banner with Retry now, 404/error pages, sign-in failure messages and a Playwright production check (#37). Next: README (#38). History, blockers and local setup: `docs/status.md`.
+Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55); responses, near-miss cookie keys and raw request objects in log calls are covered too (#57); owners share rooms with a secret, resettable invite link that makes signed-in visitors editors (#36, ADR 0003); landing page, footer, tablet-width room (presence folds away below `lg`), typed room-join errors with a way forward, unreachable-server banner with Retry now, 404/error pages, sign-in failure messages and a Playwright production check (#37); the Bash guard blocks shell writes to protected paths (#62). Next: README (#38). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 
@@ -156,7 +156,9 @@ See `docs/architecture.md` and `docs/adr/` for diagrams and decisions.
 - **Key suites:** `apps/ws-server/__tests__/collaboration.test.ts` runs the real y-websocket provider against
   the server (protocol drift); `apps/web/__tests__/invariants/client-boundary.test.ts` walks the client import graph (Invariant 6)
 - **Harness guards:** `.claude/protected-paths.txt` blocks edits to `apps/web/components/ui/*` and
-  `apps/web/prisma/migrations/*`; with `CLAUDE_FIX_MODE=1` test files are read-only
+  `apps/web/prisma/migrations/*`; `guard-bash.sh` also blocks shell writes to protected paths (redirects, `tee`,
+  `cp`/`mv`, `rm`, `sed -i`, script writers) but lets `prisma migrate`, `shadcn add` and `db:migrate` through, and
+  its tests (`.claude/hooks/tests/guard-bash.test.sh`) run in `make verify`; with `CLAUDE_FIX_MODE=1` test files are read-only
 - **CI:** GitHub Actions runs `make verify`, then build
 
 ## Security
@@ -231,6 +233,9 @@ Rules that must never break. The `invariant-auditor` agent checks changes agains
 - The Bash guard refuses any command whose *text* mentions `.env` or the Node env object, heredocs and
   grep patterns included. Write or edit such files (e2e setup, docs quoting `--env-file`) with the Edit/Write
   tools, and read them with Read.
+- Never work around a guard hook (for example, writing a migration with a shell command after the edit tools were
+  blocked). Protected paths change only through their generator (`prisma migrate`, `shadcn add`). If the generator
+  can't make the change, stop, comment on the issue and mark it blocked for the owner.
 - (Add each repeated mistake here, with the correct behaviour.)
 
 ## Workflow

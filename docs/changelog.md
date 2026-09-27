@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Shell writes to protected paths are blocked (#62)
+- `guard-bash.sh` blocks shell commands that write into `.claude/protected-paths.txt` paths: redirects (`>`, `>>`, `&>`), `tee`, `cp`/`install`/`ln`/`rsync` with a protected destination, `mv`/`rm`/`touch`/`truncate`, `dd of=`, `git rm`/`checkout`/`restore`, `find -delete`, `sed -i`/`perl -i`, and `python`/`node`/`ruby`/`perl` commands that name a protected path; deletes and moves of a parent folder count too. Relative, `./`, absolute and after-`cd` spellings all count, wrappers (`sudo`, `env`, `timeout`) are seen through, and quoted text such as a commit message is data; the parser lives in `.claude/hooks/lib/protected-writes.pl` and runs only when a command names a protected path
+- `prisma migrate` (including `diff --script` into a migration), `shadcn add` and `db:migrate` stay allowed, and so do reads
+- The block message says to use the generator, or stop and mark the issue blocked; `/next-issue` and CLAUDE.md say never to work around a guard hook. `/next-issue` now treats #13 as deferred
+- `.claude/hooks/tests/guard-bash.test.sh` (blocked, allowed and regression cases for the older checks) runs first in `make verify`, so CI enforces it
+
 ### Phase 7 — Landing, layout and error states (#37)
 - Landing page: hero with a static picture of two people editing (carets in their real presence colours), three feature cards (real-time sync, cursors and presence, persistence), how it works, and a call to action that signs you in or opens your rooms. A favicon and Open Graph metadata
 - A footer (stack, source link) on every content page through `PageShell`; not on the full-height room page. The navbar shows only the logo and avatar on phones

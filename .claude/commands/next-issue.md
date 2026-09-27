@@ -64,14 +64,18 @@ work `plans/issues/<N>/checklist.md` phase by phase, steps 1–13 in order, read
 
 ## Issue #13
 
-Do every phase, including making the repository public and setting up branch protection on `main`. The owner
-has pre-authorised those steps for this loop.
+#13 is deferred (owner's decision of 2026-09-27). Don't make the repository public or change branch protection;
+the owner has not chosen how to handle history (option A or B in `plans/issues/13/`). If #13 comes up, print
+`ISSUE 13 BLOCKED` and stop.
 
 ## Blocked
 
 If you cannot finish (a new env var with no safe default, CI failing after three fix attempts, missing access,
 or a decision the plans don't answer): commit and push what you have on the branch, comment on the issue with
 what is done and what is blocking, set the README row to `blocked`, print `ISSUE <N> BLOCKED` and stop.
+
+Never work around a guard hook. If a protected path needs a change the generators can't make (a hand-edited
+migration backfill, say), stop and mark the issue blocked.
 
 ## Rules that still apply
 

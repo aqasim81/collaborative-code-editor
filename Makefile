@@ -9,6 +9,7 @@ lint:
 typecheck:
 	pnpm type-check
 verify: ## uses the "validate" script if package.json defines one
+	bash .claude/hooks/tests/guard-bash.test.sh
 	@if jq -e '.scripts.validate' package.json >/dev/null; then pnpm run validate; else $(MAKE) lint typecheck test; fi
 	@echo "VERIFY OK"
 run:

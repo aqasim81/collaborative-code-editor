@@ -34,4 +34,21 @@ prod_word='(^|[^[:alnum:]])prod(uction)?([^[:alnum:]]|$)'
 if [[ "$code" =~ $deploy_word && "$code" =~ $prod_word && -z "${RELEASE_APPROVAL:-}" ]]; then
   block "production deploys need a release authorization. The owner sets RELEASE_APPROVAL=<ticket or date+initials>, then retry."
 fi
+# Protected paths (.claude/protected-paths.txt, also enforced for Edit/Write by guard-edits.sh):
+# no shell writes into them. Cheap check first: run the parser only when the command names the
+# last two components of a protected path, or its first one (a delete of a parent folder).
+root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+if [[ -f "$root/.claude/protected-paths.txt" ]]; then
+  while IFS= read -r glob; do
+    [[ -z "$glob" || "$glob" == \#* ]] && continue
+    p="${glob%%/\**}"; p="${p%\*}"
+    tail2="${p##*/}"; [[ "$p" == */* ]] && tail2="${p%/*}" && tail2="${tail2##*/}/${p##*/}"
+    [[ "$cmd" == *"$tail2"* || "$cmd" == *"${p%%/*}"* ]] || continue
+    hit="$(perl "$root/.claude/hooks/lib/protected-writes.pl" "$cmd" "$root")"
+    if [[ -n "$hit" ]]; then
+      block "$hit is protected (.claude/protected-paths.txt). Use the generator (prisma migrate / shadcn add). If the generator can't produce the change, stop and mark the issue blocked for the owner."
+    fi
+    break
+  done < "$root/.claude/protected-paths.txt"
+fi
 exit 0
