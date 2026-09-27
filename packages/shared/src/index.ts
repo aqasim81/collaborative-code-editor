@@ -1,5 +1,5 @@
 export { SHARED_TEXT_NAME } from "./document";
-export { LOG_LEVELS } from "./logging";
+export { LOG_LEVELS, LOG_REDACT_PATHS } from "./logging";
 export type { ClientMessage, ServerMessage } from "./messages";
 export { PRESENCE_COLORS, type PresenceUser, presenceUser, userColor } from "./presence";
 export type { RoomInfo } from "./room";

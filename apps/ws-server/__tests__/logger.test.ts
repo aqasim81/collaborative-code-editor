@@ -1,27 +1,18 @@
-// @vitest-environment node
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { captureLogs } from "../helpers/logger";
+import { describe, expect, it } from "vitest";
+import { createLogger } from "../src/logger";
+import { captureLogs } from "./helpers/logger";
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.resetModules();
-});
-
-describe("logger (#51)", () => {
-  it("is a pino logger named web at the LOG_LEVEL from env", async () => {
-    vi.stubEnv("LOG_LEVEL", "warn");
-    const { logger } = await import("@/lib/logger");
+describe("createLogger (#54)", () => {
+  it("is a pino logger named ws-server at the given level", () => {
+    const logger = createLogger("warn");
 
     expect(logger.level).toBe("warn");
-    expect(logger.bindings()).toMatchObject({ name: "web" });
+    expect(logger.bindings()).toMatchObject({ name: "ws-server" });
   });
-});
 
-describe("createWebLogger (#54)", () => {
-  it("redacts tickets, tokens, authorization headers and the ticket subprotocol in either case, and keeps other fields", async () => {
-    const { createWebLogger } = await import("@/lib/logger");
+  it("redacts tickets, tokens, authorization headers and the ticket subprotocol in either case, and keeps other fields", () => {
     const { stream, lines } = captureLogs();
-    const logger = createWebLogger("info", stream);
+    const logger = createLogger("info", stream);
 
     logger.info({ roomId: "room-1", ticket: "t.secret" }, "a");
     logger.info({ headers: { authorization: "Bearer secret", host: "h" } }, "b");
@@ -39,7 +30,7 @@ describe("createWebLogger (#54)", () => {
     );
 
     const [a, b, c, d, e] = lines();
-    expect(a).toMatchObject({ name: "web", roomId: "room-1", ticket: "[Redacted]" });
+    expect(a).toMatchObject({ roomId: "room-1", ticket: "[Redacted]" });
     expect(b).toMatchObject({ headers: { authorization: "[Redacted]", host: "h" } });
     expect(c).toMatchObject({ req: { headers: { "sec-websocket-protocol": "[Redacted]" } } });
     expect(d).toMatchObject({ purge: { ticket: "[Redacted]", authorization: "[Redacted]" } });

@@ -10,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51). Next: invite links (#36). History, blockers and local setup: `docs/status.md`.
+Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets and authorization headers, and the boundary test keeps the logger out of middleware (#54). Next: invite links (#36). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 

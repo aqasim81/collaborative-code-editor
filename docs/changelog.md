@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Log redaction and the middleware boundary check (#54)
+- Both loggers redact `ticket`, `token`, `authorization`, `headers.authorization` and the `sec-websocket-protocol` header, lowercase and capitalised (top level and one level down), as `[Redacted]`; the paths are shared as `LOG_REDACT_PATHS` in `@collab-editor/shared`
+- The client-boundary test also walks the import graph from `middleware.ts` (edge runtime) and refuses the web logger, `pino` and Node builtins there
+- Tests: logger output in each app (redacted fields, kept fields), middleware fixtures and the real app's middleware graph
+
 ### Server-side logger in the web app (#51)
 - Web server code logs structured JSON through pino (`apps/web/lib/logger.ts`, name `web`) instead of `console`; the room purge sweep logs a failed purge as `warn` with `roomId` and `attempts` (never the ticket) and a failed sweep as `error`
 - `LOG_LEVEL` now sets the web app's level too (default `info`); both apps accept the same levels, shared as `LOG_LEVELS` in `@collab-editor/shared`

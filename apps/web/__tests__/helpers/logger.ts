@@ -1,9 +1,6 @@
 import { Writable } from "node:stream";
-import { createLogger } from "../../src/logger";
 
-export const silentLogger = createLogger("silent");
-
-/** A stream to pass to `createLogger`; `lines()` parses each JSON log line written to it. */
+/** A stream to pass to `createWebLogger`; `lines()` parses each JSON log line written to it. */
 export function captureLogs(): { stream: Writable; lines: () => Record<string, unknown>[] } {
   const chunks: string[] = [];
   const stream = new Writable({

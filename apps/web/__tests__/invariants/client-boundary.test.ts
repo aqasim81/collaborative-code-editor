@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 // be a server-only module. A module is client code when it has "use client" or when client code imports
 // it, directly or transitively, so the check walks the import graph from each "use client" entry point.
 // Package imports are not followed; each one reached from client code is checked against a denylist of
-// server-only packages and Node builtins instead.
+// server-only packages and Node builtins instead. The same walk runs from `middleware.ts` (edge runtime)
+// and refuses the web logger and pino there (#54).
 // Paths are relative to the web app root, with forward slashes.
 const SERVER_ONLY_MODULES = new Set([
   "lib/env.ts",
@@ -84,13 +85,16 @@ function importSpecifiers(source: string): string[] {
   );
 }
 
+function isNodeBuiltin(specifier: string): boolean {
+  return specifier.startsWith("node:") || NODE_BUILTINS.has(specifier);
+}
+
 function isServerOnlyPackage(specifier: string): boolean {
   return (
     // The bare "next-auth" is the server entry; "next-auth/react" is client code.
     specifier === "next-auth" ||
     SERVER_ONLY_PACKAGES.some((name) => specifier === name || specifier.startsWith(`${name}/`)) ||
-    specifier.startsWith("node:") ||
-    NODE_BUILTINS.has(specifier)
+    isNodeBuiltin(specifier)
   );
 }
 
@@ -118,15 +122,44 @@ function resolveSpecifier(
   );
 }
 
-// Breadth-first walk from every "use client" entry point. Returns the modules reached and the
-// violations, each as the import chain from the entry. A local import that cannot be resolved is a
-// violation too, so a missed file can never make the check pass silently.
-function walkClientGraph(files: SourceFiles): { reached: Set<string>; violations: string[] } {
+// What a walk refuses, and where it stops following imports.
+type BoundaryRule = {
+  isDeniedModule: (path: string, source: string) => boolean;
+  isDeniedPackage: (specifier: string) => boolean;
+  // Whether the imports of a non-entry module are left out of the graph.
+  stopsAt: (source: string) => boolean;
+};
+
+// Client code: no server-only module or package. A "use server" module reaches the client only as
+// action references; its imports stay on the server.
+const CLIENT_RULE: BoundaryRule = {
+  isDeniedModule: isServerOnly,
+  isDeniedPackage: isServerOnlyPackage,
+  stopsAt: (source) => hasDirective(source, "use server"),
+};
+
+// middleware.ts runs on the edge runtime, where Node builtins, and so pino, don't exist (#54). Middleware is
+// server code, so `lib/auth.config.ts` and `lib/env.ts` are fine there; the logger is refused.
+const MIDDLEWARE_ENTRY = "middleware.ts";
+const MIDDLEWARE_RULE: BoundaryRule = {
+  isDeniedModule: (path) => path === "lib/logger.ts",
+  isDeniedPackage: (specifier) =>
+    specifier === "pino" || specifier.startsWith("pino/") || isNodeBuiltin(specifier),
+  stopsAt: () => false,
+};
+
+// Breadth-first walk from each entry point. Returns the modules reached and the violations, each as the
+// import chain from the entry. A local import that cannot be resolved is a violation too, so a missed file
+// can never make the check pass silently.
+function walkGraph(
+  files: SourceFiles,
+  entries: readonly string[],
+  rule: BoundaryRule,
+): { reached: Set<string>; violations: string[] } {
   const reached = new Set<string>();
   const violations: string[] = [];
-  const entries = [...files].filter(([, source]) => hasDirective(source, "use client"));
 
-  for (const [entry] of entries) {
+  for (const entry of entries) {
     const visited = new Set<string>([entry]);
     const queue: string[][] = [[entry]];
     while (queue.length > 0) {
@@ -134,19 +167,18 @@ function walkClientGraph(files: SourceFiles): { reached: Set<string>; violations
       const current = chain[chain.length - 1] ?? "";
       const source = files.get(current) ?? "";
       reached.add(current);
-      if (isServerOnly(current, source)) {
+      if (rule.isDeniedModule(current, source)) {
         violations.push(chain.join(" -> "));
         continue;
       }
-      // A "use server" module reaches the client only as action references; its imports stay on the server.
-      if (current !== entry && hasDirective(source, "use server")) {
+      if (current !== entry && rule.stopsAt(source)) {
         continue;
       }
       for (const specifier of importSpecifiers(source)) {
         const target = resolveSpecifier(current, specifier, files);
         if (target === undefined) {
           violations.push(`${chain.join(" -> ")} -> unresolved "${specifier}"`);
-        } else if (target === null && isServerOnlyPackage(specifier)) {
+        } else if (target === null && rule.isDeniedPackage(specifier)) {
           violations.push(`${chain.join(" -> ")} -> package "${specifier}"`);
         } else if (target !== null && !visited.has(target)) {
           visited.add(target);
@@ -156,6 +188,25 @@ function walkClientGraph(files: SourceFiles): { reached: Set<string>; violations
     }
   }
   return { reached, violations };
+}
+
+// Every "use client" module is an entry point of the client graph.
+function walkClientGraph(files: SourceFiles): { reached: Set<string>; violations: string[] } {
+  const entries = [...files]
+    .filter(([, source]) => hasDirective(source, "use client"))
+    .map(([path]) => path);
+  return walkGraph(files, entries, CLIENT_RULE);
+}
+
+function walkMiddlewareGraph(files: SourceFiles): { reached: Set<string>; violations: string[] } {
+  return walkGraph(files, [MIDDLEWARE_ENTRY], MIDDLEWARE_RULE);
+}
+
+// The app's source, read from disk once for the real-app walks.
+let appFiles: SourceFiles | undefined;
+function readAppFiles(): SourceFiles {
+  appFiles ??= new Map(readSourceFiles(APP_ROOT));
+  return appFiles;
 }
 
 function findViolations(files: SourceFiles): string[] {
@@ -330,13 +381,41 @@ describe("client boundary (Invariant 6)", () => {
   });
 
   it("no module reachable from a client component in the app is server-only", () => {
-    const files = new Map(readSourceFiles(APP_ROOT));
+    const files = readAppFiles();
     const { reached, violations } = walkClientGraph(files);
 
     // Guard against a walk that silently stops: directive-less modules imported by client components
     // must be part of the client graph.
     expect(reached).toContain("components/editor/toolbar.tsx");
     expect(reached).toContain("lib/yjs/provider.ts");
+    expect(violations).toEqual([]);
+  });
+
+  it("flags the web logger, pino and Node builtins reached from middleware, and allows auth.config and env (#54)", () => {
+    const files = new Map([
+      [
+        "middleware.ts",
+        'import NextAuth from "next-auth";\nimport { authConfig } from "@/lib/auth.config";\nimport { log } from "@/lib/helper";\nimport pino from "pino";\nimport { randomUUID } from "node:crypto";\n',
+      ],
+      ["lib/auth.config.ts", 'import { env } from "@/lib/env";\nexport const authConfig = {};\n'],
+      ["lib/env.ts", ENV],
+      ["lib/helper.ts", 'import { logger } from "./logger";\nexport const log = logger;\n'],
+      ["lib/logger.ts", "export const logger = {};\n"],
+    ]);
+
+    expect(walkMiddlewareGraph(files).violations).toEqual([
+      'middleware.ts -> package "pino"',
+      'middleware.ts -> package "node:crypto"',
+      "middleware.ts -> lib/helper.ts -> lib/logger.ts",
+    ]);
+  });
+
+  it("the app's middleware does not reach the web logger or pino (#54)", () => {
+    const files = readAppFiles();
+    const { reached, violations } = walkMiddlewareGraph(files);
+
+    // Guard against a walk that never starts: the middleware must reach its auth config.
+    expect(reached).toContain("lib/auth.config.ts");
     expect(violations).toEqual([]);
   });
 });

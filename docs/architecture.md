@@ -131,6 +131,13 @@ Postgres holds identity and room metadata; document content lives in LevelDB on 
   on the edge runtime. Client code does not log. Log lines never carry tickets or secrets: a failed room purge is
   a `warn` with `roomId`, `attempts` and the error, a failed sweep an `error`.
 - **WS server:** pino named `ws-server` (`src/logger.ts`), same `LOG_LEVEL` key.
+- **Redaction (#54):** both loggers set pino `redact` to `LOG_REDACT_PATHS` from `@collab-editor/shared`:
+  `ticket`, `token`, `authorization`, `headers.authorization` and `headers["sec-websocket-protocol"]` (which carries
+  the room ticket), lowercase and capitalised (outgoing `fetch` headers keep their case), at the top level and one
+  level down. A matching field prints as `[Redacted]`; an output test in each app
+  proves it. This is a safety net: call sites still never pass tickets.
+- **Edge boundary (#54):** the client-boundary test also walks the import graph from `middleware.ts` and refuses
+  `lib/logger.ts`, `pino` and Node builtins in it; `lib/auth.config.ts` and `lib/env.ts` are allowed there.
 - Both apps validate `LOG_LEVEL` against the same levels (`LOG_LEVELS` in `@collab-editor/shared`; the web app keeps
   a tested copy because `next.config.ts` loads `lib/env.ts`). Biome's `noConsole` is an error outside `__tests__/`.
 
