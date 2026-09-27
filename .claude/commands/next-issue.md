@@ -22,7 +22,7 @@ during the session are planned too). The rules are the "Intake" section of `plan
 - For each new issue, read the code it touches, then write `plans/issues/<N>/implementation-plan.md` and
   `phases/phase-<k>-<name>.md` in the format of the existing folders, and `checklist.md` from
   `plans/issues/_checklist-template.md` (steps 1–6 per phase, issue-end steps 7–15, boxes unticked).
-- Add its row after the `in progress` row (or the last `done` row), never after #13, and renumber the order.
+- Add its row after the `in progress` row (or the last `done` row), never after #1 (was #13), and renumber the order.
 - Planning an issue is not working on it: continue with your own single issue.
 
 ## 1. Pick the issue
@@ -79,10 +79,11 @@ A checklist with a 13-step loop per phase is the old format: follow the steps ab
 once its targeted tests pass and it is committed (so resuming lands on the next phase), and tick every phase's
 step 8 with PR, 9 with Code review, 10 with Merge, 11 with Bookkeeping, 12 with Close and 13 with Intake and stop.
 
-## Issue #13
+## Protected main
 
-Owner chose option B (see `plans/issues/13/`) on 2026-09-27, all the way: every phase of #13 is authorised, including the history rewrite,
-going public and protecting `main`.
+#1 (was #13 in the archive repo) is done: the repo is public and `main` requires `Verify` and `Build`, up to date
+with `main`. If `gh pr merge` refuses because the branch is behind, run `gh pr update-branch <PR>`, wait for the checks
+again, then merge. Never bypass the protection.
 
 ## Blocked
 
