@@ -22,7 +22,7 @@ during the session are planned too). The rules are the "Intake" section of `plan
 - For each new issue, read the code it touches, then write `plans/issues/<N>/implementation-plan.md` and
   `phases/phase-<k>-<name>.md` in the format of the existing folders, and `checklist.md` from
   `plans/issues/_checklist-template.md` (steps 1–6 per phase, issue-end steps 7–15, boxes unticked).
-- Add its row after the `in progress` row (or the last `done` row), never after #1 (was #13), and renumber the order.
+- Add its row after the `in progress` row (or the last `done` row), and renumber the order.
 - Planning an issue is not working on it: continue with your own single issue.
 
 ## 1. Pick the issue
@@ -66,6 +66,8 @@ file in `plans/issues/<N>/phases/` when you plan that phase. Tick each box as so
 - **Merge without asking.** The owner has authorised merging inside this loop. Wait with
   `gh pr checks <PR> --watch` until every check is green, then
   `gh pr merge <PR> --squash --delete-branch --subject "<PR title>" --body "<short summary>"`.
+  `main` is protected (CLAUDE.md, Git Workflow): if the merge is refused because the branch is behind, run
+  `gh pr update-branch <PR>`, watch the checks again, then merge. Never bypass the protection.
   Then `git switch main && git pull` and wait for the `main` CI run for the merge commit to finish
   (`gh run list --branch main --limit 1`, `gh run watch <id> --exit-status`). It must succeed.
 - **Bookkeeping:** tick the checklist, set the README row to `done (#<PR>)`, and for Phase 7 issues tick
@@ -78,12 +80,6 @@ file in `plans/issues/<N>/phases/` when you plan that phase. Tick each box as so
 A checklist with a 13-step loop per phase is the old format: follow the steps above. Tick a phase's steps 5–7
 once its targeted tests pass and it is committed (so resuming lands on the next phase), and tick every phase's
 step 8 with PR, 9 with Code review, 10 with Merge, 11 with Bookkeeping, 12 with Close and 13 with Intake and stop.
-
-## Protected main
-
-#1 (was #13 in the archive repo) is done: the repo is public and `main` requires `Verify` and `Build`, up to date
-with `main`. If `gh pr merge` refuses because the branch is behind, run `gh pr update-branch <PR>`, wait for the checks
-again, then merge. Never bypass the protection.
 
 ## Blocked
 
