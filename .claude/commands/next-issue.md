@@ -18,7 +18,7 @@ Run this before picking the issue, and again just before printing `ISSUE <N> DON
 during the session are planned too). The rules are the "Intake" section of `plans/issues/README.md`:
 
 - `gh issue list --state open --limit 100 --json number,title`. Every open issue missing from the order table
-  (except the umbrella #10) is new.
+  is new (rows under the README's Archive section belong to the old repo and don't count).
 - For each new issue, read the code it touches, then write `plans/issues/<N>/implementation-plan.md` and
   `phases/phase-<k>-<name>.md` in the format of the existing folders, and `checklist.md` from
   `plans/issues/_checklist-template.md` (steps 1–6 per phase, issue-end steps 7–15, boxes unticked).
@@ -70,8 +70,7 @@ file in `plans/issues/<N>/phases/` when you plan that phase. Tick each box as so
   `gh pr update-branch <PR>`, watch the checks again, then merge. Never bypass the protection.
   Then `git switch main && git pull` and wait for the `main` CI run for the merge commit to finish
   (`gh run list --branch main --limit 1`, `gh run watch <id> --exit-status`). It must succeed.
-- **Bookkeeping:** tick the checklist, set the README row to `done (#<PR>)`, and for Phase 7 issues tick
-  `plans/issues/10/checklist.md`. After #38 merges, close umbrella issue #10 with a comment.
+- **Bookkeeping:** tick the checklist and set the README row to `done (#<PR>)`.
 - **Close:** confirm the issue is `CLOSED`; if not, close it with a comment linking the PR.
 - **Intake and stop — do not start the next issue.** Run the intake (§0) again. Stop any dev server or other
   background process you started, make sure you are on a clean, pulled `main`, print `ISSUE <N> DONE` and end
