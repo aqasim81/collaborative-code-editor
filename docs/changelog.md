@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### `.env.example` in sync with the env schemas (#47)
+- `.env.example` now lists `WS_TRUSTED_PROXIES` (empty = trust no proxy) and `WS_PERSISTENCE_DIR` (`.leveldb`)
+- A test in each app fails, naming the variable, if a key of that app's env schema (except `NODE_ENV`) is missing from `.env.example`; both schemas export `ENV_KEYS`
+- Project tooling may read and edit `.env.example` again; a new Read guard hook (`.claude/hooks/guard-reads.sh`) blocks every other `.env*` file and `secrets/`, at any depth, and the deny list names the common env files at any depth
+
 ### Room dashboard (#35)
 - `/dashboard` lists every room the user is a member of, most recently active first, as cards with name, language, created date and an Owner/Editor badge; an empty state invites creating the first room
 - "New room" opens a dialog for a name (1–80 characters, trimmed) and one of the supported languages; invalid input is refused with a message before and after reaching the server, and a created room opens straight away

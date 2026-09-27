@@ -12,6 +12,19 @@ checklist and phases and follow the checklist strictly.
 This command works one issue from start to merge and then stops. `scripts/issue-loop.sh` starts a fresh
 session for the next issue (that fresh session is the checklist's `/clear`). Do exactly one issue.
 
+## 0. Intake (owner's standing instruction)
+
+Run this before picking the issue, and again at step 13 just before printing `ISSUE <N> DONE` (so follow-ups
+filed during the session are planned too). The rules are the "Intake" section of `plans/issues/README.md`:
+
+- `gh issue list --state open --limit 100 --json number,title`. Every open issue missing from the order table
+  (except the umbrella #10) is new.
+- For each new issue, read the code it touches, then write `plans/issues/<N>/implementation-plan.md`,
+  `phases/phase-<k>-<name>.md` and `checklist.md` (13-step loop per phase, boxes unticked) in the format of
+  the existing folders.
+- Add its row after the `in progress` row (or the last `done` row), never after #13, and renumber the order.
+- Planning an issue is not working on it: continue with your own single issue.
+
 ## 1. Pick the issue
 
 - The issue is the first row of the order table in `plans/issues/README.md` whose status is not `done`.
@@ -63,6 +76,7 @@ what is done and what is blocking, set the README row to `blocked`, print `ISSUE
 ## Rules that still apply
 
 - No AI attribution anywhere: no `Co-Authored-By` trailer, no tool names in commits, PR bodies or merge messages.
-- Never read or write `.env` files. Never push to `main` or force-push.
+- Never read or write real `.env` files. Reading and editing the committed `.env.example` (placeholders only)
+  is allowed. Never push to `main` or force-push.
 - Don't add features beyond the issue; file gaps as new GitHub issues.
 - Update `docs/changelog.md`, `docs/status.md` and the CLAUDE.md Status line as the checklist's docs phase says.

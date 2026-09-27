@@ -25,6 +25,9 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
+/** Every variable the schema reads; `.env.example` must list each one except NODE_ENV. */
+export const ENV_KEYS = Object.keys(envSchema.shape);
+
 export type EnvResult = Result<Env>;
 
 /** Validates an environment source. Empty strings count as missing. */

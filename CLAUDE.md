@@ -10,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35). Next: invite links (#36). History, blockers and local setup: `docs/status.md`.
+Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47). Next: purge a deleted room's document (#48), then invite links (#36). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 
@@ -220,6 +220,7 @@ Rules that must never break. The `invariant-auditor` agent checks changes agains
 
 ## Things Claude gets wrong
 
+- `.env.example` is a committed placeholder file and may be read and edited; only real `.env*` files are off limits.
 - (Add each repeated mistake here, with the correct behaviour.)
 
 ## Workflow
