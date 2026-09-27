@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 // Paths are relative to the web app root, with forward slashes.
 const SERVER_ONLY_MODULES = new Set([
   "lib/env.ts",
+  "lib/logger.ts",
   "lib/auth.ts",
   "lib/auth.config.ts",
   "lib/prisma.ts",
@@ -25,6 +26,7 @@ const SERVER_ONLY_PACKAGES = [
   "jose",
   "next-auth/providers",
   "next/headers",
+  "pino",
 ];
 const NODE_BUILTINS = new Set(builtinModules);
 const APP_ROOT = join(__dirname, "..", "..");
@@ -300,6 +302,19 @@ describe("client boundary (Invariant 6)", () => {
       'components/b.tsx -> package "node:crypto"',
       'components/b.tsx -> package "crypto"',
       'components/b.tsx -> package "fs/promises"',
+    ]);
+  });
+
+  it("flags the web logger and pino in client code (#51)", () => {
+    const files = new Map([
+      ["components/a.tsx", '"use client";\nimport { logger } from "@/lib/logger";\n'],
+      ["components/b.tsx", '"use client";\nimport pino from "pino";\n'],
+      ["lib/logger.ts", "export const logger = {};\n"],
+    ]);
+
+    expect(findViolations(files)).toEqual([
+      "components/a.tsx -> lib/logger.ts",
+      'components/b.tsx -> package "pino"',
     ]);
   });
 

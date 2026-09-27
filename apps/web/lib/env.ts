@@ -4,6 +4,13 @@ import type { Result } from "@/lib/result";
 // Server-only: import this from server code (Server Components, actions, route handlers, config).
 // Client components read NEXT_PUBLIC_* values, which Next.js inlines at build time.
 
+/**
+ * pino levels for `LOG_LEVEL`. A copy of `@collab-editor/shared`'s `LOG_LEVELS`, which the WS server uses:
+ * next.config.ts loads this file, and its loader can't resolve the shared package's TS source. A test keeps
+ * the two equal.
+ */
+export const LOG_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace", "silent"] as const;
+
 const envSchema = z.object({
   DATABASE_URL: z
     .string()
@@ -27,6 +34,8 @@ const envSchema = z.object({
     .url()
     .refine((value) => /^wss?:\/\//.test(value), "must be a ws:// or wss:// URL"),
   NEXT_PUBLIC_SITE_URL: z.string().url(),
+  // pino level for lib/logger.ts; the WS server reads the same key.
+  LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Server-side logger in the web app (#51)
+- Web server code logs structured JSON through pino (`apps/web/lib/logger.ts`, name `web`) instead of `console`; the room purge sweep logs a failed purge as `warn` with `roomId` and `attempts` (never the ticket) and a failed sweep as `error`
+- `LOG_LEVEL` now sets the web app's level too (default `info`); both apps accept the same levels, shared as `LOG_LEVELS` in `@collab-editor/shared`
+- The client-boundary test refuses the logger module and `pino` in client code
+- Biome's `noConsole` is an error everywhere except `__tests__/` (it was a warning)
+
 ### Purge a deleted room's document (#48)
 - Deleting a room closes its open sockets at once with the new close code `4003`; clients stop reconnecting and show "Could not join this room: This room was deleted"
 - The WS server removes the room's LevelDB document through a new `DELETE /rooms/<id>` route, guarded by the per-IP upgrade limit and a 60 s purge ticket (audience `collab-editor:ws-admin`, bearer header); a room ticket can't be used as a purge ticket, nor the reverse; the route is idempotent

@@ -43,7 +43,7 @@
       },
       "suspicious": {
         "noExplicitAny": "error",
-        "noConsole": "warn"
+        "noConsole": "error"
       },
       "style": {
         "useConst": "error",
@@ -63,6 +63,16 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["**/__tests__/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "warn"
+          }
+        }
+      }
+    },
     {
       "includes": ["apps/web/components/ui/**"],
       "linter": {

@@ -1,3 +1,4 @@
+import { LOG_LEVELS } from "@collab-editor/shared";
 import { z } from "zod";
 import { parseTrustedProxy, type TrustedProxy } from "./client-address";
 import type { Result } from "./result";
@@ -24,7 +25,7 @@ const envSchema = z.object({
       }
       return proxies;
     }),
-  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
+  LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 

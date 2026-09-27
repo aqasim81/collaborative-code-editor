@@ -123,6 +123,17 @@ Postgres holds identity and room metadata; document content lives in LevelDB on 
   document. A failure keeps the row and backs off (1 min doubling to 1 h); dashboard loads retry due rows at most
   once a minute (#48, ADR 0001 addendum).
 
+## Logging (#51)
+
+- **Web app:** server code logs through `apps/web/lib/logger.ts`, a pino logger named `web` (JSON on stdout, no
+  transport), at `LOG_LEVEL` from `lib/env.ts` (default `info`). It is server-only: the client-boundary test refuses
+  both the module and `pino` in client code (Invariant 6), and it is never imported from `middleware.ts`, which runs
+  on the edge runtime. Client code does not log. Log lines never carry tickets or secrets: a failed room purge is
+  a `warn` with `roomId`, `attempts` and the error, a failed sweep an `error`.
+- **WS server:** pino named `ws-server` (`src/logger.ts`), same `LOG_LEVEL` key.
+- Both apps validate `LOG_LEVEL` against the same levels (`LOG_LEVELS` in `@collab-editor/shared`; the web app keeps
+  a tested copy because `next.config.ts` loads `lib/env.ts`). Biome's `noConsole` is an error outside `__tests__/`.
+
 ## Authentication
 
 - `apps/web/lib/auth.config.ts` — edge-safe Auth.js config (GitHub provider, JWT callbacks, `authorized` route check); used by `middleware.ts`

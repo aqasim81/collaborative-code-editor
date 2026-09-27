@@ -1,5 +1,6 @@
 import { roomPurgePath } from "@collab-editor/shared";
 import { env, wsServerHttpUrl } from "@/lib/env";
+import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 import type { Result } from "@/lib/result";
 import { signPurgeTicket } from "@/lib/ws-ticket";
@@ -80,8 +81,8 @@ export async function sweepRoomPurges(deps: PurgeDeps = defaultDeps): Promise<vo
         continue;
       }
       const attempts = row.attempts + 1;
-      // biome-ignore lint/suspicious/noConsole: server-only; the web app has no logger, and this runs in after()
-      console.error(`room purge failed (room ${row.roomId}, attempt ${attempts}): ${purged.error}`);
+      // warn: the row is retried. The ticket is never logged.
+      logger.warn({ roomId: row.roomId, attempts, err: purged.error }, "room purge failed");
       await prisma.roomPurge.updateMany({
         where: { roomId: row.roomId },
         data: {
@@ -92,8 +93,7 @@ export async function sweepRoomPurges(deps: PurgeDeps = defaultDeps): Promise<vo
       });
     }
   } catch (error) {
-    // biome-ignore lint/suspicious/noConsole: server-only; the web app has no logger, and this runs in after()
-    console.error("room purge sweep failed", error);
+    logger.error({ err: error }, "room purge sweep failed");
   }
 }
 

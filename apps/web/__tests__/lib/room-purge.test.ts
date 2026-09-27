@@ -2,13 +2,15 @@
 // jose needs the Node realm's Uint8Array; jsdom provides its own.
 import { PURGE_TICKET_AUDIENCE } from "@collab-editor/shared";
 import { jwtVerify } from "jose";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = vi.hoisted(() => ({
   roomPurge: { findMany: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() },
 }));
+const loggerMock = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn() }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+vi.mock("@/lib/logger", () => ({ logger: loggerMock }));
 
 import { env } from "@/lib/env";
 import {
@@ -21,7 +23,6 @@ import {
   sweepRoomPurges,
 } from "@/lib/room-purge";
 
-const errorLog = vi.spyOn(console, "error");
 const NOW = new Date("2026-09-27T12:00:00Z");
 const row = (roomId: string, attempts = 0) => ({
   roomId,
@@ -43,10 +44,6 @@ const answer = (status: number) => () => Promise.resolve(new Response(null, { st
 
 beforeEach(() => {
   vi.clearAllMocks();
-  errorLog.mockImplementation(() => undefined);
-});
-afterEach(() => {
-  errorLog.mockReset();
 });
 
 describe("purgeRoomDocument (Invariants 1 and 6)", () => {
@@ -154,11 +151,24 @@ describe("sweepRoomPurges", () => {
     expect(prismaMock.roomPurge.deleteMany).toHaveBeenCalledWith({ where: { roomId: "r2" } });
   });
 
-  it("never rejects, even when the database fails", async () => {
-    prismaMock.roomPurge.findMany.mockRejectedValue(new Error("db down"));
+  it("logs a failed row as a warning with its room and attempt, never the ticket (#51)", async () => {
+    prismaMock.roomPurge.findMany.mockResolvedValue([row("r1", 2)]);
+
+    await sweepRoomPurges(deps(answer(503)));
+    expect(loggerMock.warn).toHaveBeenCalledTimes(1);
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      { roomId: "r1", attempts: 3, err: "WS server answered 503" },
+      "room purge failed",
+    );
+    expect(loggerMock.error).not.toHaveBeenCalled();
+  });
+
+  it("never rejects, even when the database fails, and logs the error", async () => {
+    const failure = new Error("db down");
+    prismaMock.roomPurge.findMany.mockRejectedValue(failure);
 
     await expect(sweepRoomPurges(deps(answer(204)))).resolves.toBeUndefined();
-    expect(errorLog).toHaveBeenCalled();
+    expect(loggerMock.error).toHaveBeenCalledWith({ err: failure }, "room purge sweep failed");
   });
 });
 

@@ -10,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48). Next: invite links (#36). History, blockers and local setup: `docs/status.md`.
+Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51). Next: invite links (#36). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 
@@ -182,7 +182,7 @@ See `docs/architecture.md` and `docs/adr/` for diagrams and decisions.
 
 1. **No `any` types** — use `unknown`, generics, or proper type narrowing
 2. **No raw `process.env`** — always import from `lib/env.ts`
-3. **No `console.log` in production code** — use structured logger (pino) on server, remove from client
+3. **No `console` in production code** — log through pino on the server (`apps/web/lib/logger.ts`, `apps/ws-server/src/logger.ts`); client code does not log. Biome `noConsole` is an error outside `__tests__/`
 4. **No throwing in business logic** — return Result pattern objects
 5. **No manual edits to `components/ui/`** — shadcn components are auto-generated
 6. **No class components** — functional components only
@@ -223,6 +223,9 @@ Rules that must never break. The `invariant-auditor` agent checks changes agains
 ## Things Claude gets wrong
 
 - `.env.example` is a committed placeholder file and may be read and edited; only real `.env*` files are off limits.
+- `apps/web/lib/env.ts` is loaded by `next.config.ts`, whose loader can't resolve `@collab-editor/shared`'s TS
+  source: importing the shared package there passes `make verify` but breaks `pnpm build`. Run `pnpm build`
+  after touching `lib/env.ts` or anything it imports.
 - (Add each repeated mistake here, with the correct behaviour.)
 
 ## Workflow

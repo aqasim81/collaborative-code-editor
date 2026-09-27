@@ -1,5 +1,6 @@
+import { LOG_LEVELS as SHARED_LOG_LEVELS } from "@collab-editor/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseEnv, wsServerHttpUrl } from "@/lib/env";
+import { LOG_LEVELS, parseEnv, wsServerHttpUrl } from "@/lib/env";
 
 const validEnv = {
   DATABASE_URL: "postgresql://collab:collab@localhost:5434/collab_editor",
@@ -20,9 +21,12 @@ function expectError(source: Record<string, string | undefined>, fragment: strin
 }
 
 describe("parseEnv", () => {
-  it("accepts a complete environment and defaults NODE_ENV", () => {
+  it("accepts a complete environment and defaults NODE_ENV and LOG_LEVEL", () => {
     const result = parseEnv(validEnv);
-    expect(result).toEqual({ success: true, data: { ...validEnv, NODE_ENV: "development" } });
+    expect(result).toEqual({
+      success: true,
+      data: { ...validEnv, NODE_ENV: "development", LOG_LEVEL: "info" },
+    });
   });
 
   it("accepts an optional AUTH_URL and wss URLs", () => {
@@ -118,6 +122,21 @@ describe("WS_SERVER_URL (#48)", () => {
 
   it("refuses another scheme", () => {
     expectError({ ...validEnv, WS_SERVER_URL: "ftp://ws:8080" }, "WS_SERVER_URL");
+  });
+});
+
+describe("LOG_LEVEL (#51)", () => {
+  it("has the same levels as the WS server", () => {
+    expect(LOG_LEVELS).toEqual(SHARED_LOG_LEVELS);
+  });
+
+  it.each(LOG_LEVELS)("accepts %s", (level) => {
+    const result = parseEnv({ ...validEnv, LOG_LEVEL: level });
+    expect(result.success && result.data.LOG_LEVEL).toBe(level);
+  });
+
+  it("refuses an unknown level", () => {
+    expectError({ ...validEnv, LOG_LEVEL: "verbose" }, "LOG_LEVEL");
   });
 });
 
