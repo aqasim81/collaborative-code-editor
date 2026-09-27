@@ -12,6 +12,12 @@ describe("Toolbar", () => {
     expect(options).toEqual(LANGUAGES.map((language) => language.label));
   });
 
+  it("links back to the dashboard", () => {
+    render(<Toolbar roomName="Pairing" language="javascript" onLanguageChange={vi.fn()} />);
+
+    expect(screen.getByRole("link", { name: "← Rooms" })).toHaveAttribute("href", "/dashboard");
+  });
+
   it("selects the current language", () => {
     render(<Toolbar roomName="Pairing" language="rust" onLanguageChange={vi.fn()} />);
 

@@ -25,3 +25,9 @@ export function isLanguageId(value: string): value is LanguageId {
 export function toLanguageId(value: string): LanguageId {
   return isLanguageId(value) ? value : DEFAULT_LANGUAGE;
 }
+
+/** Display name of a stored room language, with the same fallback as `toLanguageId`. */
+export function languageLabel(value: string): string {
+  const id = toLanguageId(value);
+  return LANGUAGES.find((language) => language.id === id)?.label ?? id;
+}

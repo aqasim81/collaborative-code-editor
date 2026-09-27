@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Result } from "@/lib/result";
 
 // Server-only: import this from server code (Server Components, actions, route handlers, config).
 // Client components read NEXT_PUBLIC_* values, which Next.js inlines at build time.
@@ -24,7 +25,7 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-export type EnvResult = { success: true; data: Env } | { success: false; error: string };
+export type EnvResult = Result<Env>;
 
 /** Validates an environment source. Empty strings count as missing. */
 export function parseEnv(source: Record<string, string | undefined>): EnvResult {

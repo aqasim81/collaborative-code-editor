@@ -65,6 +65,9 @@ connection indefinitely.
   client refreshes on `4001` regardless of the expiry it saw, so skew cannot cause a stale-ticket loop.
 - Pushing revocations (immediate removal) would need a web-app → WS-server channel; it can be revisited
   if a 5-minute window becomes too long.
+- Deleting a room (#35) is revoked the same way: its members are refused the next ticket, so open
+  sockets lose the room within one ticket lifetime. The document stays in LevelDB until the purge in #48,
+  which is that web-app → WS-server channel.
 - A ticket fetch that throws (a transient failure) is retried with backoff; only a refusal keeps the
   connection down, so a removed member is still never retried into the room (#27).
 

@@ -2,6 +2,7 @@ import type { SessionUser } from "@collab-editor/shared";
 import Image from "next/image";
 import Link from "next/link";
 import { signOutAction } from "@/actions/auth";
+import { DASHBOARD_PATH } from "@/lib/routes";
 
 interface NavbarProps {
   user: SessionUser | null;
@@ -19,6 +20,9 @@ export function Navbar({ user }: NavbarProps) {
         </Link>
         {user ? (
           <div className="flex items-center gap-3">
+            <Link href={DASHBOARD_PATH} className="text-sm hover:underline">
+              Dashboard
+            </Link>
             {user.image ? (
               <Image
                 src={user.image}

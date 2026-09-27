@@ -6,7 +6,7 @@ import { toSessionUser } from "@/lib/auth.config";
 import { env } from "@/lib/env";
 import { toLanguageId } from "@/lib/languages";
 import { findRoomForMember } from "@/lib/rooms";
-import { SIGN_IN_PATH } from "@/lib/routes";
+import { roomPath, signInRedirect } from "@/lib/routes";
 
 export const metadata: Metadata = {
   title: "Room · Collaborative Code Editor",
@@ -20,7 +20,7 @@ export default async function RoomPage({ params }: RoomPageProps) {
   const { id } = await params;
   const user = toSessionUser(await auth());
   if (!user) {
-    redirect(`${SIGN_IN_PATH}?callbackUrl=${encodeURIComponent(`/room/${id}`)}`);
+    redirect(signInRedirect(roomPath(id)));
   }
 
   // Invariant 2: membership, not the room id, grants access.

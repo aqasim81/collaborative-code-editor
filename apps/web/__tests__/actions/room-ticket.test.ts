@@ -3,13 +3,19 @@
 import { jwtVerify } from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { authMock, findRoomForMemberMock } = vi.hoisted(() => ({
+const { authMock, findRoomForMemberMock, markRoomActiveMock, afterMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   findRoomForMemberMock: vi.fn(),
+  markRoomActiveMock: vi.fn(),
+  afterMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: authMock }));
-vi.mock("@/lib/rooms", () => ({ findRoomForMember: findRoomForMemberMock }));
+vi.mock("next/server", () => ({ after: afterMock }));
+vi.mock("@/lib/rooms", () => ({
+  findRoomForMember: findRoomForMemberMock,
+  markRoomActive: markRoomActiveMock,
+}));
 
 import { getRoomTicket } from "@/actions/room-ticket";
 import { env } from "@/lib/env";
@@ -21,6 +27,8 @@ describe("getRoomTicket", () => {
   beforeEach(() => {
     authMock.mockReset();
     findRoomForMemberMock.mockReset();
+    markRoomActiveMock.mockReset();
+    afterMock.mockReset();
   });
 
   it("issues a ticket for a member of the room", async () => {
@@ -48,6 +56,20 @@ describe("getRoomTicket", () => {
       success: false,
       error: "Room not found",
     });
+    expect(afterMock).not.toHaveBeenCalled();
+  });
+
+  it("records room activity after the response, not before issuing the ticket", async () => {
+    authMock.mockResolvedValue(session);
+    findRoomForMemberMock.mockResolvedValue(room);
+
+    const result = await getRoomTicket("r1");
+
+    expect(result.success).toBe(true);
+    expect(markRoomActiveMock).not.toHaveBeenCalled();
+    expect(afterMock).toHaveBeenCalledTimes(1);
+    afterMock.mock.calls[0]?.[0]();
+    expect(markRoomActiveMock).toHaveBeenCalledWith("r1");
   });
 
   it("refuses a signed-out visitor without touching the database", async () => {

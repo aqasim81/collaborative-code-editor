@@ -1,5 +1,7 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { LANGUAGES, type LanguageId, toLanguageId } from "@/lib/languages";
+import { DASHBOARD_PATH } from "@/lib/routes";
 
 interface ToolbarProps {
   roomName: string;
@@ -13,6 +15,12 @@ export function Toolbar({ roomName, status, language, onLanguageChange }: Toolba
   return (
     <div className="flex h-11 shrink-0 items-center justify-between gap-4 border-b border-neutral-200 px-4 dark:border-neutral-800">
       <div className="flex min-w-0 items-center gap-3">
+        <Link
+          href={DASHBOARD_PATH}
+          className="shrink-0 text-sm text-neutral-600 hover:underline dark:text-neutral-400"
+        >
+          ← Rooms
+        </Link>
         <h1 className="truncate text-sm font-medium">{roomName}</h1>
         {status}
       </div>

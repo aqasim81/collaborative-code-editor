@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LANGUAGE, isLanguageId, LANGUAGES, toLanguageId } from "@/lib/languages";
+import {
+  DEFAULT_LANGUAGE,
+  isLanguageId,
+  LANGUAGES,
+  languageLabel,
+  toLanguageId,
+} from "@/lib/languages";
 
 describe("languages", () => {
   it("lists the ten languages from the issue with unique ids", () => {
@@ -30,5 +36,10 @@ describe("languages", () => {
     expect(toLanguageId("rust")).toBe("rust");
     expect(toLanguageId("cobol")).toBe(DEFAULT_LANGUAGE);
     expect(DEFAULT_LANGUAGE).toBe("javascript");
+  });
+
+  it("labels a language, falling back to the default's label", () => {
+    expect(languageLabel("python")).toBe("Python");
+    expect(languageLabel("cobol")).toBe("JavaScript");
   });
 });

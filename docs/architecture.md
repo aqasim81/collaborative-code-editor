@@ -54,7 +54,7 @@ The collaborative code editor is a three-component system:
 ## Data Flow
 
 1. User authenticates via GitHub OAuth → Auth.js creates session + JWT
-2. User creates/joins room → Next.js Server Action creates room record in PostgreSQL
+2. User creates a room on `/dashboard` → the `createRoom` server action creates the room and the creator's `OWNER` membership in PostgreSQL, then the browser opens `/room/<id>`
 3. User enters editor → `getRoomTicket(roomId)` server action checks `RoomMember` and returns a 5-minute HS256 room ticket
 4. Browser connects to `ws://<ws-server>/<roomId>` offering the subprotocols `collab.v1` and `ticket.<jwt>` → WS server rate-limits the attempt per IP (429 otherwise), then verifies the ticket on upgrade (401 otherwise) → joins the room; the server loads the room's Yjs document from LevelDB and the client and server exchange sync step 1/2
 5. User types → CodeMirror → `Y.Text` (y-codemirror.next) → provider sends the update → server appends it to LevelDB, then broadcasts it to the room
@@ -99,8 +99,25 @@ Postgres holds identity and room metadata; document content lives in LevelDB on 
 | Model | Purpose |
 |-------|---------|
 | `User`, `Account`, `Session` | Auth.js Prisma adapter models (`Session` unused under JWT sessions) |
-| `Room` | Room metadata: name, language, creator |
+| `Room` | Room metadata: name, language, creator; `updatedAt` doubles as last activity (bumped when a member is issued a ticket, at most once a minute) |
 | `RoomMember` | Membership (`OWNER` / `EDITOR`), keyed by `(roomId, userId)`; grants room access (Invariant 2) |
+
+## Rooms (#35)
+
+- **Actions** (`apps/web/actions/room.ts`, Result-typed, input checked with the Zod schemas in `lib/room-input.ts`):
+  `createRoom({ name, language })` (name trimmed, 1–80 characters; one of the supported languages) creates the room
+  and its `OWNER` member in one nested write; `listRooms()` returns the rooms the user is a member of, most recently
+  active first; `deleteRoom(id)` deletes only a room the caller owns (a scoped `deleteMany`). An editor is told only
+  the owner can delete; a non-member gets "Room not found", the same as for a missing room (Invariant 2).
+- **Activity ordering:** document edits never reach Postgres, so `getRoomTicket` bumps `Room.updatedAt` after the
+  response (`after()`), skipping the write if it was bumped within the last minute. Every connected client fetches a
+  ticket at connect and about every 5 minutes, so `updatedAt` tracks "last in use".
+- **Dashboard:** `app/dashboard/page.tsx` (Server Component) lists `RoomCard`s (name, language, created date, role);
+  the client components `CreateRoomDialog` and `DeleteRoomButton` (owners only, confirms first, reports with a toast)
+  receive only display values. The navbar and the room toolbar link back to it.
+- **Deletion:** deleting removes the `Room` and its `RoomMember` rows (cascade). No ticket can be issued for it
+  again, so open sockets lose access at ticket expiry (≤ 5 minutes) and the room URL returns 404. The room's LevelDB
+  document stays on the WS server, orphaned but unreachable (room ids are never reused), until #48 purges it.
 
 ## Authentication
 

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Room dashboard (#35)
+- `/dashboard` lists every room the user is a member of, most recently active first, as cards with name, language, created date and an Owner/Editor badge; an empty state invites creating the first room
+- "New room" opens a dialog for a name (1–80 characters, trimmed) and one of the supported languages; invalid input is refused with a message before and after reaching the server, and a created room opens straight away
+- Owners can delete a room after a confirmation; editors see no Delete button, and a delete by anyone but the owner is refused with an error ("Only the room's owner can delete it", or "Room not found" for a non-member)
+- Server actions `createRoom`, `listRooms` and `deleteRoom` (`actions/room.ts`) return Results; the creator's OWNER membership is written together with the room
+- "Last activity" is `Room.updatedAt`, bumped after a member is issued a room ticket, at most once a minute per room, without delaying the ticket
+- The navbar links to the dashboard when signed in; the room toolbar links back to it
+- shadcn/ui is set up (button, card, dialog, input, label, alert dialog, badge) with dark mode following the OS preference; toasts via sonner
+- A deleted room can't be joined (no ticket, 404) and open sockets lose access at ticket expiry; its LevelDB document stays on the WS server until #48
+- Tests: input schemas, query shapes and owner scoping, the actions' success, validation, session and database-error paths, the dialog, delete button, card and dashboard states, and that client components get no server values
+
 ### Trusted proxies for the upgrade rate limit (#30)
 - New WS-server setting `WS_TRUSTED_PROXIES`: comma-separated IP addresses and CIDR ranges of the reverse proxies in front of the server; empty by default, which keeps today's behaviour (`X-Forwarded-For` ignored)
 - When the socket peer is a listed proxy, the per-IP upgrade limit keys on the rightmost `X-Forwarded-For` hop that is not itself a trusted proxy, so clients behind one proxy no longer share one bucket; hops a client prepends are never used, and a missing or malformed header falls back to the proxy's own bucket
