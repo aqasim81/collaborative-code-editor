@@ -9,8 +9,13 @@
 credentials.*
 secrets.*
 
-# Internal docs
+# Internal docs and workflow files (not published)
 plans/
+/intent/
+/specs/
+docs/templates/
+docs/ENGINEERING_WORKFLOW.md
+docs/REPO_STANDARDS.md
 
 # Claude Code: harness is committed; personal settings are not
 .claude/settings.local.json

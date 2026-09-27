@@ -1,4 +1,4 @@
-# Single gate: `make verify`, wrapping the pnpm scripts so hooks, CI and Claude all call the same thing.
+# Single gate: `make verify`, wrapping the pnpm scripts so hooks, CI and local runs all call the same thing.
 .PHONY: setup test lint typecheck verify run doctor
 setup:
 	pnpm install --frozen-lockfile

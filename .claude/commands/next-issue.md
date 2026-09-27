@@ -81,9 +81,8 @@ step 8 with PR, 9 with Code review, 10 with Merge, 11 with Bookkeeping, 12 with 
 
 ## Issue #13
 
-#13 is deferred (owner's decision of 2026-09-27). Don't make the repository public or change branch protection;
-the owner has not chosen how to handle history (option A or B in `plans/issues/13/`). If #13 comes up, print
-`ISSUE 13 BLOCKED` and stop.
+Owner chose option B (see `plans/issues/13/`) on 2026-09-27, all the way: every phase of #13 is authorised, including the history rewrite,
+going public and protecting `main`.
 
 ## Blocked
 

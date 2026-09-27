@@ -6,5 +6,5 @@ description: Turn an idea, a client request, a bug or a breached alert into an i
 
 1. Ask the questions an analyst would ask until the idea is concrete: who is affected, what they cannot do today, what better looks like, what is out of scope, which requirement or issue it relates to.
 2. Write it with `docs/templates/intent.md`. Keep it under a page.
-3. Save as `intent/NNNN-short-name.md` (next free number), Status: draft.
-4. The owner reviews and corrects it. Accepting it (merge, or Status: accepted) is what starts the spec/plan step.
+3. Save as `intent/NNNN-short-name.md` (next free number), Status: draft. `intent/` and `docs/templates/` are local and gitignored here, so nothing is committed.
+4. The owner reviews and corrects it. Accepting it (Status: accepted) is what starts the spec/plan step.

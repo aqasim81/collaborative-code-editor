@@ -48,7 +48,7 @@ See the [README's Setup section](../README.md#setup): Node 22, pnpm via corepack
 
 ## Next Steps
 1. Add `WS_TICKET_SECRET` (32+ characters, e.g. `openssl rand -hex 32`) to `apps/web/.env` if it is not there yet; local `pnpm dev` and `pnpm build` need it
-2. All seven phases are done. #13 (protect `main`) is deferred by the owner; new work enters as GitHub issues and `./scripts/issue-loop.sh` (or `/next-issue`) picks it up in `plans/issues/README.md` order
+2. All seven phases are done. #13 (protect `main`) is in progress: the owner chose option B (new public repo from rewritten history, then protect `main`); new work enters as GitHub issues and `./scripts/issue-loop.sh` (or `/next-issue`) picks it up in `plans/issues/README.md` order
 3. Owner to-do from #38: on a fresh clone, sign in with real GitHub OAuth, create a room, open it in a second window as a second GitHub user, and check the invite link
 4. Run the full production check by hand (set `AUTH_URL=http://localhost:3000` for `pnpm start`; it signs in as the seed room's owner with a cookie minted from `AUTH_SECRET`): `docker compose up -d`, `pnpm build`, `pnpm --filter @collab-editor/web start`, the WS server (`pnpm --filter @collab-editor/ws-server dev`, or `node --env-file=../web/.env dist/index.js` in `apps/ws-server`), then `cd apps/web && node --env-file=.env ./node_modules/.bin/playwright test`. `E2E_SIGNED_OUT_ONLY=1 pnpm --filter @collab-editor/web e2e:prod` checks the public pages without secrets
 5. When deploying the WS server behind a reverse proxy, set `WS_TRUSTED_PROXIES` to the proxy's addresses

@@ -1,6 +1,6 @@
 # AI-native workflow (starter kit rules — apply in every session)
 
-**Artifact chain.** Every change of substance moves through committed files:
+**Artifact chain.** Every change of substance moves through files (local and gitignored in this public repo):
 `intent/NNNN-name.md` (what and why; skill `intent-writer`) → `specs/NNNN-name.md` (requirements, design,
 flagged concerns) → `plans/changes/NNNN-name.md` (files, order, risks, proof) → branch + tests → PR.
 Whole-project planning (`plans/prd.md`, `plans/implementation_plan.md`, `plans/checklist.md`) comes from

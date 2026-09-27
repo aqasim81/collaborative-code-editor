@@ -10,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phases 1–7 complete. Phase 7 (room management and polish, #10): room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55); responses, near-miss cookie keys and raw request objects in log calls are covered too (#57); owners share rooms with a secret, resettable invite link that makes signed-in visitors editors (#36, ADR 0003); landing page, footer, tablet-width room (presence folds away below `lg`), typed room-join errors with a way forward, unreachable-server banner with Retry now, 404/error pages, sign-in failure messages and a Playwright production check (#37); the Bash guard blocks shell writes to protected paths (#62); README with a demo GIF recorded by `apps/web/e2e/record-demo.ts`, and an MIT licence (#38). Next: #13 (protect `main`), deferred by the owner. History, blockers and local setup: `docs/status.md`.
+Phases 1–7 complete. Phase 7 (room management and polish, #10): room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55); responses, near-miss cookie keys and raw request objects in log calls are covered too (#57); owners share rooms with a secret, resettable invite link that makes signed-in visitors editors (#36, ADR 0003); landing page, footer, tablet-width room (presence folds away below `lg`), typed room-join errors with a way forward, unreachable-server banner with Retry now, 404/error pages, sign-in failure messages and a Playwright production check (#37); the Bash guard blocks shell writes to protected paths (#62); README with a demo GIF recorded by `apps/web/e2e/record-demo.ts`, and an MIT licence (#38). Next: #13 (protect `main`), in progress: the owner chose option B (new public repo from rewritten history). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 
@@ -53,8 +53,8 @@ collaborative-code-editor/
 │       └── __tests__/          # Vitest tests
 ├── packages/
 │   └── shared/                 # Shared TypeScript types
-├── docs/                       # Living docs + ADRs in docs/adr/ (committed)
-├── intent/, specs/             # Artifact chain per change (committed)
+├── docs/                       # Living docs + ADRs in docs/adr/ (committed; templates/ local)
+├── intent/, specs/             # Artifact chain per change (local, gitignored)
 ├── plans/                      # PRD, implementation plan, plans/changes/ (gitignored)
 ├── turbo.json                  # Turborepo config
 ├── biome.json                  # Biome linter/formatter
@@ -201,6 +201,8 @@ See `docs/architecture.md` and `docs/adr/` for diagrams and decisions.
 - **End:** update `docs/changelog.md` and `docs/status.md`.
 
 ## References
+
+`plans/*` is local and not published; its links resolve only in a working checkout.
 
 - [PRD](plans/prd.md) — Product requirements
 - [Implementation Plan](plans/implementation_plan.md) — Full architecture and phase details
