@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Cookie and raw request header redaction (#55)
+- Both loggers also redact `cookie` (as a key at the top level or one level down) and `set-cookie` (inside `headers`, at the top level or one level down), lowercase and capitalised, and a request's `rawHeaders` array
+- A request logged as `req` goes through pino's standard request serializer: method, url, headers and address only, no socket or `rawHeaders`
+- The one-level depth limit of the redact paths is documented as a known limit
+- Tests: logger output in each app (cookie and set-cookie redacted, a Node `IncomingMessage` logged as `req` and under another key)
+
 ### Log redaction and the middleware boundary check (#54)
 - Both loggers redact `ticket`, `token`, `authorization`, `headers.authorization` and the `sec-websocket-protocol` header, lowercase and capitalised (top level and one level down), as `[Redacted]`; the paths are shared as `LOG_REDACT_PATHS` in `@collab-editor/shared`
 - The client-boundary test also walks the import graph from `middleware.ts` (edge runtime) and refuses the web logger, `pino` and Node builtins there

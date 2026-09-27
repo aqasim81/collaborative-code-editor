@@ -136,6 +136,14 @@ Postgres holds identity and room metadata; document content lives in LevelDB on 
   the room ticket), lowercase and capitalised (outgoing `fetch` headers keep their case), at the top level and one
   level down. A matching field prints as `[Redacted]`; an output test in each app
   proves it. This is a safety net: call sites still never pass tickets.
+- **Cookies and requests (#55):** the list also covers `cookie` and `headers["set-cookie"]` (the Auth.js session JWT
+  travels there), both spellings, and `rawHeaders` (a Node request's header array, which repeats every header;
+  paths can't name array entries, so it is redacted whole). Both loggers set `serializers: { req:
+  pino.stdSerializers.req }`: log a request as `req` and it prints as `{ id, method, url, headers, remoteAddress,
+  remotePort }`, its headers then redacted by the paths above.
+- **Known limit: depth.** `*` matches one level, so a secret two levels down (`{ a: { b: { ticket } } }`) prints in
+  the clear. Call sites log flat objects; two-level wildcard paths are not added because pino's wildcard redaction
+  cost grows with each level.
 - **Edge boundary (#54):** the client-boundary test also walks the import graph from `middleware.ts` and refuses
   `lib/logger.ts`, `pino` and Node builtins in it; `lib/auth.config.ts` and `lib/env.ts` are allowed there.
 - Both apps validate `LOG_LEVEL` against the same levels (`LOG_LEVELS` in `@collab-editor/shared`; the web app keeps

@@ -2,10 +2,12 @@
 export const LOG_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace", "silent"] as const;
 
 /**
- * pino `redact` paths both apps set, so a ticket, bearer token or `Authorization` header passed to a log call
- * by mistake prints as `[Redacted]`. Matching is case-sensitive and `*` matches one level, so both header
- * spellings are listed (Node lowercases incoming headers; outgoing `fetch` headers keep their case) at the top
- * level and one level down. A safety net only: call sites still never log secrets.
+ * pino `redact` paths both apps set, so a ticket, bearer token, `Authorization` header or cookie (the Auth.js
+ * session JWT) passed to a log call by mistake prints as `[Redacted]`. Matching is case-sensitive and `*`
+ * matches one level, so both header spellings are listed (Node lowercases incoming headers; outgoing `fetch`
+ * headers keep their case) at the top level and one level down. A Node request's `rawHeaders` array repeats
+ * its headers, and paths can't name array entries, so it is redacted whole. A safety net only: call sites
+ * still never log secrets.
  */
 export const LOG_REDACT_PATHS = [
   "ticket",
@@ -22,4 +24,16 @@ export const LOG_REDACT_PATHS = [
   '*.headers["sec-websocket-protocol"]',
   'headers["Sec-WebSocket-Protocol"]',
   '*.headers["Sec-WebSocket-Protocol"]',
+  "cookie",
+  "*.cookie",
+  "*.headers.cookie",
+  "Cookie",
+  "*.Cookie",
+  "*.headers.Cookie",
+  'headers["set-cookie"]',
+  '*.headers["set-cookie"]',
+  'headers["Set-Cookie"]',
+  '*.headers["Set-Cookie"]',
+  "rawHeaders",
+  "*.rawHeaders",
 ] as const;
