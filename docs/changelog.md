@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Commits and pushes on main are refused locally (#6)
+- `guard-bash.sh` refuses a `git push` to `main`/`master`, whether named (`origin main`, `HEAD:main`, `x:refs/heads/main`) or implied (a bare `git push`, `git push origin` or `git push origin HEAD` while `main` is checked out). Pushes inside `bash -c` count too. Tag pushes, `--tags`, feature branches and a push right after `git switch -c` stay allowed, and so does a new repository's first push, while origin has no `main` yet. On `main`, `git commit --no-verify` is refused as well, since it would skip the lefthook check
+- A lefthook `commit-msg` command (`.claude/hooks/no-commit-on-main.sh`) refuses any commit on `main`/`master`, empty ones included, except a new repository's first commit. It runs in `commit-msg` because lefthook skips `pre-commit` when nothing is staged
+- The hook tests run the push and commit cases in throwaway repositories, so the result doesn't depend on the checkout's branch
+
 ### /hotfix and /phase-next go through PRs (#4)
 - `/hotfix` merges its PR once `Verify` and `Build` pass (`gh pr update-branch` when refused as behind) and says merging the PR, not a push to `main`, triggers the deploy. The regression test and docs follow-ups land on a `chore/<issue>-hotfix-followup` branch and merge through one PR
 - `/phase-next` branches `feat/phase-<N>-<slug>` before its first commit when on `main`, and always opens the phase PR

@@ -9,15 +9,16 @@ M=apps/web/prisma/migrations
 U=apps/web/components/ui
 failures=0
 
-run() { # run <expected exit> <command>
-  local got
-  jq -n --arg c "$2" '{tool_input: {command: $c}}' \
-    | env -u RELEASE_APPROVAL CLAUDE_PROJECT_DIR="$root" bash "$hook" >/dev/null 2>&1
-  got=$?
-  if [[ "$got" != "$1" ]]; then
-    echo "FAIL (want $1, got $got): $2" >&2
+check() { # check <expected exit> <got> <label>
+  if [[ "$2" != "$1" ]]; then
+    echo "FAIL (want $1, got $2): $3" >&2
     failures=$((failures + 1))
   fi
+}
+run() { # run <expected exit> <command>; the project dir is $dir (default: this repo), the shell's cwd $cwd (default: $dir)
+  jq -n --arg c "$2" --arg d "${cwd:-${dir:-$root}}" '{tool_input: {command: $c}, cwd: $d}' \
+    | env -u RELEASE_APPROVAL CLAUDE_PROJECT_DIR="${dir:-$root}" bash "$hook" >/dev/null 2>&1
+  check "$1" $? "$2"
 }
 blocked() { run 2 "$1"; }
 allowed() { run 0 "$1"; }
@@ -99,13 +100,70 @@ blocked "bash -c \"echo x > $M/a/migration.sql\""
 
 # Existing checks behave as before
 blocked "git push --force origin feat/x"
-blocked "git push origin main"
 blocked "cat .env"
 allowed "cat .env.example"
 blocked "vercel deploy --prod"
 allowed "git commit -m 'deploy to prod later'"
-allowed "git push -u origin feat/x"
+
+# Pushes to main, in throwaway repos so the result doesn't depend on this checkout's branch or refs
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+g() { git -C "$1" -c user.name=t -c user.email=t@t -c commit.gpgsign=false "${@:2}" >/dev/null 2>&1; }
+repo() { # repo <name> <branch> [no-origin]: one commit on <branch>, with an origin/main ref unless no-origin
+  git init -q -b "$2" "$tmp/$1" && g "$tmp/$1" commit -q --allow-empty -m init
+  [[ -n "${3:-}" ]] || g "$tmp/$1" update-ref refs/remotes/origin/main HEAD
+}
+repo on-main main
+repo on-feat feat/x
+repo new-repo main no-origin
+git init -q -b main "$tmp/unborn"
+
+dir="$tmp/on-main"
+blocked "git push origin main"
+blocked "git push"
+blocked "git push origin"
+blocked "git push origin HEAD"
+blocked "git push -u origin HEAD"
+blocked "git push origin HEAD:main"
+blocked "git push origin feat/x:main"
+blocked "git push origin HEAD:refs/heads/main"
+blocked "git add -A && git commit -m x && git push"
+blocked "bash -c \"git push origin main && true\""
+blocked "git checkout -- README.md && git push"
+blocked "git push -o ci.skip origin"
+blocked "git push --repo origin"
+blocked "git push origin --tags main"
+blocked "git commit --no-verify -m x"
+blocked "git commit -n -m x"
+blocked "git commit -anm x"
+allowed "git commit --amend --no-edit"
+allowed "git push origin 'feat/x'"
+blocked "git checkout . && git push"
+blocked "git checkout HEAD -- README.md && git push"
+cwd="$tmp/on-feat" allowed "git push"   # the shell runs in a feature-branch worktree
+allowed "git commit -m x"   # the lefthook commit-msg script refuses it, not this guard
 allowed "git push origin v1.2.3"   # /release pushes only the tag; main moves through the release PR
+allowed "git push origin --tags"
+allowed "git push -u origin feat/x"
+allowed "git switch -c feat/x && git push -u origin HEAD"
+allowed "git commit -m \"fix: git push is refused on main\""
+dir="$tmp/on-feat"
+allowed "git push"
+allowed "git push -u origin HEAD"
+blocked "git push origin feat/x:main"
+allowed "git commit --no-verify -m x"
+dir="$tmp/new-repo"
+allowed "git push -u origin main"   # /phase-start's first push, before origin has a main
+unset dir
+
+# Commits on main are refused by the lefthook commit-msg script
+commit_hook() { # commit_hook <expected exit> <repo>
+  (cd "$tmp/$2" && bash "$root/.claude/hooks/no-commit-on-main.sh") >/dev/null 2>&1
+  check "$1" $? "no-commit-on-main.sh in $2"
+}
+commit_hook 1 on-main
+commit_hook 0 on-feat
+commit_hook 0 unborn   # the first commit of a new repo
 
 if (( failures > 0 )); then
   echo "hook tests FAILED ($failures)" >&2

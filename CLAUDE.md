@@ -10,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phases 1–7 complete. Phase 7 (room management and polish, #10): room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55); responses, near-miss cookie keys and raw request objects in log calls are covered too (#57); owners share rooms with a secret, resettable invite link that makes signed-in visitors editors (#36, ADR 0003); landing page, footer, tablet-width room (presence folds away below `lg`), typed room-join errors with a way forward, unreachable-server banner with Retry now, 404/error pages, sign-in failure messages and a Playwright production check (#37); the Bash guard blocks shell writes to protected paths (#62); README with a demo GIF recorded by `apps/web/e2e/record-demo.ts`, and an MIT licence (#38). The repository is public and `main` is protected (#1). History, blockers and local setup: `docs/status.md`.
+Phases 1–7 complete. Phase 7 (room management and polish, #10): room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48); web server code logs through pino (#51); both loggers redact tickets, authorization headers and cookies, and the boundary test keeps the logger out of middleware (#54, #55); responses, near-miss cookie keys and raw request objects in log calls are covered too (#57); owners share rooms with a secret, resettable invite link that makes signed-in visitors editors (#36, ADR 0003); landing page, footer, tablet-width room (presence folds away below `lg`), typed room-join errors with a way forward, unreachable-server banner with Retry now, 404/error pages, sign-in failure messages and a Playwright production check (#37); the Bash guard blocks shell writes to protected paths (#62); README with a demo GIF recorded by `apps/web/e2e/record-demo.ts`, and an MIT licence (#38). The repository is public and `main` is protected (#1); commits and pushes on `main` are refused locally (#6). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 
@@ -158,7 +158,10 @@ See `docs/architecture.md` and `docs/adr/` for diagrams and decisions.
 - **Harness guards:** `.claude/protected-paths.txt` blocks edits to `apps/web/components/ui/*` and
   `apps/web/prisma/migrations/*`; `guard-bash.sh` also blocks shell writes to protected paths (redirects, `tee`,
   `cp`/`mv`, `rm`, `sed -i`, script writers) but lets `prisma migrate`, `shadcn add` and `db:migrate` through, and
-  its tests (`.claude/hooks/tests/guard-bash.test.sh`) run in `make verify`; with `CLAUDE_FIX_MODE=1` test files are read-only
+  its tests (`.claude/hooks/tests/guard-bash.test.sh`) run in `make verify`; with `CLAUDE_FIX_MODE=1` test files are read-only.
+  `guard-bash.sh` refuses a push to `main`/`master`, named (`origin main`, `HEAD:main`) or implied (a bare push while
+  on `main`), unless origin has no such branch yet, and `git commit --no-verify` on `main`; lefthook `commit-msg` refuses
+  commits on `main` (`no-commit-on-main.sh`)
 - **CI:** GitHub Actions runs `make verify`, then build
 
 ## Security
@@ -181,7 +184,7 @@ See `docs/architecture.md` and `docs/adr/` for diagrams and decisions.
 - **`main` is protected:** PRs only; `Verify` and `Build` required and up to date with `main` (`gh pr update-branch <PR>` when behind); admins included; no force pushes or deletions
 - **Old numbers:** issue and PR numbers in commits up to `96a1184` (history before this repo went public, #1 was #13 there) refer to the private `collaborative-code-editor-archive` repo
 - **One commit per logical change** — commit after each working chunk
-- **Git hooks (lefthook):** pre-commit Biome + gitleaks; pre-push `make verify`. Run `lefthook install` after cloning
+- **Git hooks (lefthook):** pre-commit Biome + gitleaks; commit-msg commitlint + no commits on `main`; pre-push `make verify`. Run `lefthook install` after cloning
 - **Commit messages:** Enforced by commitlint (conventional format)
 
 ## Anti-Patterns
