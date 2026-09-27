@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### The docs-only audit skip is an allow-list (#67)
+- The invariant audit is skipped only when every changed file is under `docs/` (not `docs/templates/`, which holds CI and script templates), or is `README.md` or `LICENSE` at the repo root. The old `*.md` glob also matched `CLAUDE.md` (which defines the invariants), `REVIEW.md` and `.claude/**/*.md` (including the auditor itself); a change to any of them now runs the audit. The rule is stated once, in `.claude/rules/ai-native-workflow.md` "Fresh eyes"; `/next-issue` and the checklist template point to it
+
 ### /next-issue follows the per-issue checklist (#64)
 - `.claude/commands/next-issue.md` names the checklist's steps instead of numbering them. Each phase runs only the touched packages' tests (`pnpm --filter <pkg> test`, plus `tsc --noEmit` when types changed) and commits; once per issue come Simplify on the whole diff, the invariant audit, one full `make verify`, the PR, code review, the merge and `main` CI, bookkeeping, closing the issue, intake and `ISSUE <N> DONE`
 - The invariant audit is skipped for docs-only diffs (`docs/**`, `*.md`, `README.md`, `LICENSE`, `docs/media/**`), with "audit skipped: docs-only" in the PR body; it always runs when `apps/`, `packages/`, `.claude/hooks/` or `.github/` changed. `.claude/rules/ai-native-workflow.md` "Fresh eyes" says the same

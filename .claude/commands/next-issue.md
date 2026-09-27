@@ -56,9 +56,8 @@ file in `plans/issues/<N>/phases/` when you plan that phase. Tick each box as so
 
 **Once per issue**, after the last phase:
 - **Simplify:** run the `simplify` skill once on the whole diff (`git diff main...HEAD`) and commit any cleanups.
-- **Invariant audit:** run the `invariant-auditor` agent on the diff. Skip it when the diff touches only docs
-  (`docs/**`, `*.md`, `README.md`, `LICENSE`, `docs/media/**`) and write "audit skipped: docs-only" in the PR
-  body. Always run it when anything under `apps/`, `packages/`, `.claude/hooks/` or `.github/` changed.
+- **Invariant audit:** run the `invariant-auditor` agent on the diff. Skip it only under the docs-only rule in
+  `.claude/rules/ai-native-workflow.md` ("Fresh eyes"), and then write "audit skipped: docs-only" in the PR body.
 - **Full gate:** `make verify` must print `VERIFY OK` (and `pnpm build` must exit 0 if the plan asks); fix the
   code, not the tests.
 - **PR:** write the PR body (from `.github/PULL_REQUEST_TEMPLATE.md`, with `Closes #<N>`) to the scratchpad and

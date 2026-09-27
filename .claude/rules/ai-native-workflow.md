@@ -21,7 +21,9 @@ read-only) and fix the code.
 
 **Fresh eyes.** Use the `verify-app` subagent to check finished work, `invariant-auditor` when core logic
 changes, `code-simplifier` before a PR. The agent that wrote the code never approves it. Skip
-`invariant-auditor` when a change touches only docs (`docs/**`, `*.md`, `README.md`, `LICENSE`, `docs/media/**`).
+`invariant-auditor` (the docs-only rule) only when every changed file is under `docs/` but not `docs/templates/`,
+or is `README.md` or `LICENSE` at the repo root. Anything else runs it, including `CLAUDE.md`, `REVIEW.md`,
+`.claude/**`, `docs/templates/**` and any other `*.md`.
 
 **Fix the system, not the output.** When a result misses the bar, change the check, skill, hook or CLAUDE.md
 so it can't recur. When Claude makes the same mistake twice, add it to the mistakes section of CLAUDE.md ("Things Claude gets wrong" or "Known mistakes to avoid").
