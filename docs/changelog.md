@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Invariant 3's no-direct-writes half is guarded (#8)
+- `apps/web/__tests__/invariants/editor-writes.test.ts` scans `app/`, `components/` and `lib/` and fails, naming file and line, on a `dispatch` with `changes`, `selection` or a spread (or of a prepared transaction), `view.update([...])`, `setState`, `EditorState.create` with a `doc` or a prepared config, `EditorState.fromJSON`, an `EditorView` given a `state`, a prepared config or a `doc` other than `text.toString()`, and, outside `lib/yjs/`, Y.Text `insert`, `insertEmbed`, `applyDelta` or two-argument `delete` and `Y.applyUpdate`. Comments, strings and JSX text are stripped with the TypeScript parser, so an apostrophe or a `//` in a string can't hide later code. It is a heuristic on call text. Effects-only dispatches and Map/Set deletes pass; in-memory fixtures prove each rule, and the real scan must see the existing dispatches
+- `code-editor.test.tsx` checks the view equals the shared text after local typing, a remote update, undo, redo and a language switch
+
 ### Commits and pushes on main are refused locally (#6)
 - `guard-bash.sh` refuses a `git push` to `main`/`master`, whether named (`origin main`, `HEAD:main`, `x:refs/heads/main`) or implied (a bare `git push`, `git push origin` or `git push origin HEAD` while `main` is checked out). Pushes inside `bash -c` count too. Tag pushes, `--tags`, feature branches and a push right after `git switch -c` stay allowed, and so does a new repository's first push, while origin has no `main` yet. On `main`, `git commit --no-verify` is refused as well, since it would skip the lefthook check
 - A lefthook `commit-msg` command (`.claude/hooks/no-commit-on-main.sh`) refuses any commit on `main`/`master`, empty ones included, except a new repository's first commit. It runs in `commit-msg` because lefthook skips `pre-commit` when nothing is staged

@@ -91,6 +91,42 @@ describe("CodeEditor", () => {
     expect(view.state.doc.toString()).toBe(" theirs");
   });
 
+  it("keeps the editor equal to the shared text through every kind of change (Invariant 3)", async () => {
+    const text = sharedText("let a;");
+    const { rerender } = render(
+      <CodeEditor language="javascript" text={text} awareness={presenceOf(text)} />,
+    );
+    const view = viewIn(screen.getByTestId("code-editor"));
+    const inSync = () => expect(view.state.doc.toString()).toBe(text.toString());
+    const binding = (key: string) => yUndoManagerKeymap.find((b) => b.key === key)?.run;
+
+    view.dispatch({ changes: { from: 6, insert: " let b;" } });
+    expect(text.toString()).toBe("let a; let b;");
+    inSync();
+
+    // Another client's edit reaches the view through the Y.Doc alone. The provider applies it with itself
+    // as origin, which the undo manager doesn't track (it does track `null`).
+    const remote = new Y.Doc();
+    Y.applyUpdate(remote, Y.encodeStateAsUpdate(text.doc as Y.Doc));
+    remote.getText("codemirror").insert(0, "// hi\n");
+    Y.applyUpdate(text.doc as Y.Doc, Y.encodeStateAsUpdate(remote), "remote");
+    expect(view.state.doc.toString()).toBe("// hi\nlet a; let b;");
+    inSync();
+
+    expect(binding("Mod-z")?.(view)).toBe(true);
+    expect(text.toString()).toBe("// hi\nlet a;");
+    inSync();
+
+    expect(binding("Mod-y")?.(view)).toBe(true);
+    expect(text.toString()).toBe("// hi\nlet a; let b;");
+    inSync();
+
+    rerender(<CodeEditor language="python" text={text} awareness={presenceOf(text)} />);
+    await waitFor(() => expect(view.state.facet(language)?.name).toBe("python"));
+    expect(text.toString()).toBe("// hi\nlet a; let b;");
+    inSync();
+  });
+
   it("switches the grammar in place and keeps the text", async () => {
     const text = sharedText("x = 1");
     const { rerender } = render(
