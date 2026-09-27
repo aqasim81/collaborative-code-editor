@@ -91,6 +91,7 @@ describe("upgrade rate-limit key", () => {
   it("keys IPv4 by address, including IPv4-mapped IPv6", () => {
     expect(upgradeRateLimitKey("203.0.113.7")).toBe("203.0.113.7");
     expect(upgradeRateLimitKey("::ffff:203.0.113.7")).toBe("203.0.113.7");
+    expect(upgradeRateLimitKey("::ffff:cb00:7107")).toBe("203.0.113.7");
   });
 
   it("keys IPv6 by its /64, since one host usually controls the whole prefix", () => {
@@ -99,6 +100,11 @@ describe("upgrade rate-limit key", () => {
     expect(upgradeRateLimitKey("2001:db8::1")).toBe("2001:db8:0:0::/64");
     expect(upgradeRateLimitKey("::1")).toBe("0:0:0:0::/64");
     expect(upgradeRateLimitKey("fe80::1%lo0")).toBe("fe80:0:0:0::/64");
+  });
+
+  it("keys one IPv6 /64 the same however it is written, e.g. in a forwarded header", () => {
+    expect(upgradeRateLimitKey("2001:0db8:0001:0000::1")).toBe("2001:db8:1:0::/64");
+    expect(upgradeRateLimitKey("2001:DB8:1::1")).toBe("2001:db8:1:0::/64");
   });
 
   it("shares one bucket for an unknown address", () => {

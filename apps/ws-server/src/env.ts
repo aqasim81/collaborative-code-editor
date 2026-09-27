@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseTrustedProxy, type TrustedProxy } from "./client-address";
 import type { Result } from "./result";
 
 const envSchema = z.object({
@@ -7,6 +8,22 @@ const envSchema = z.object({
   // Directory of the LevelDB document store; relative paths resolve against the working directory.
   WS_PERSISTENCE_DIR: z.string().min(1).default(".leveldb"),
   ROOM_GRACE_PERIOD_MS: z.coerce.number().int().min(0).default(30_000),
+  // Comma-separated IPs/CIDRs of the reverse proxies in front of the server; unset trusts none (#30).
+  WS_TRUSTED_PROXIES: z
+    .string()
+    .default("")
+    .transform((value, ctx) => {
+      const proxies: TrustedProxy[] = [];
+      for (const entry of value ? value.split(",") : []) {
+        const parsed = parseTrustedProxy(entry);
+        if (parsed.success) {
+          proxies.push(parsed.data);
+        } else {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `"${entry}": ${parsed.error}` });
+        }
+      }
+      return proxies;
+    }),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });

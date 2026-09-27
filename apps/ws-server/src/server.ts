@@ -12,6 +12,7 @@ import {
 } from "@collab-editor/shared";
 import { WebSocket, WebSocketServer } from "ws";
 import { verifyRoomTicket } from "./auth/ticket";
+import { clientAddress, NO_TRUSTED_PROXIES, type TrustedProxies } from "./client-address";
 import { parseClientMessage } from "./handlers/messages";
 import type { Logger } from "./logger";
 import type { DocumentStore } from "./persistence/document-store";
@@ -51,8 +52,10 @@ export interface ServerOptions {
   /** Inbound bytes per connection; its capacity should be at least `maxPayloadBytes`. */
   byteRateLimit?: RateLimitOptions;
   maxPayloadBytes?: number;
-  /** Upgrade attempts per remote IP, checked before any ticket work. */
+  /** Upgrade attempts per client IP, checked before any ticket work. */
   upgradeRateLimit?: RateLimitOptions;
+  /** Peers whose `X-Forwarded-For` is believed when keying the upgrade limit; default none. */
+  trustedProxies?: TrustedProxies;
   /** How long a close the server starts waits for the client's handshake before terminating the socket. */
   closeTimeoutMs?: number;
   /** Ping interval; a connection that hasn't answered the previous ping by the next one is terminated. */
@@ -121,7 +124,7 @@ function send(ws: WebSocket, message: ServerMessage): void {
 }
 
 export async function startServer(options: ServerOptions): Promise<Result<RunningServer>> {
-  const { logger, ticketSecret, store } = options;
+  const { logger, ticketSecret, store, trustedProxies = NO_TRUSTED_PROXIES } = options;
   const rateLimit = options.rateLimit ?? DEFAULT_RATE_LIMIT;
   const byteRateLimit = options.byteRateLimit ?? DEFAULT_BYTE_RATE_LIMIT;
   const maxPayload = options.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES;
@@ -307,8 +310,11 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
       rejectUpgrade(socket, 503);
       return;
     }
-    // Before any parsing or HMAC work. The socket's own address: X-Forwarded-For is client-controlled.
-    const ip = upgradeRateLimitKey(req.socket.remoteAddress);
+    // Before any parsing or HMAC work. The socket's own address, unless the peer is a trusted proxy: then
+    // the rightmost X-Forwarded-For hop that is not itself a trusted proxy (the rest is client-controlled).
+    const ip = upgradeRateLimitKey(
+      clientAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"], trustedProxies),
+    );
     if (!upgradeLimiter.tryConsume(ip)) {
       logger.info({ ip }, "upgrade rejected: rate limit exceeded");
       rejectUpgrade(socket, 429);

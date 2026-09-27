@@ -1,3 +1,4 @@
+import { createTrustedProxies } from "./client-address";
 import { parseEnv } from "./env";
 import { createLogger } from "./logger";
 import { openLevelDbStore } from "./persistence/document-store";
@@ -31,6 +32,7 @@ export async function main(
     roomGracePeriodMs: env.data.ROOM_GRACE_PERIOD_MS,
     logger,
     store: store.data,
+    trustedProxies: createTrustedProxies(env.data.WS_TRUSTED_PROXIES),
   });
   if (!started.success) {
     await store.data.close();
@@ -38,7 +40,11 @@ export async function main(
   }
   const server = started.data;
   logger.info(
-    { port: server.port, persistenceDir: env.data.WS_PERSISTENCE_DIR },
+    {
+      port: server.port,
+      persistenceDir: env.data.WS_PERSISTENCE_DIR,
+      trustedProxies: env.data.WS_TRUSTED_PROXIES.length,
+    },
     "ws server listening",
   );
 

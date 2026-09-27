@@ -1,3 +1,5 @@
+import { normaliseAddress } from "./client-address";
+
 export interface RateLimitOptions {
   /** Burst size. */
   capacity: number;
@@ -70,7 +72,7 @@ export function createRateLimiter(
 }
 
 /**
- * Upgrade attempts per remote IP. The burst covers a small office behind one NAT reconnecting all its
+ * Upgrade attempts per client IP. The burst covers a small office behind one NAT reconnecting all its
  * tabs after a server restart; each tab otherwise reconnects about once per ticket lifetime (5 min), far
  * below the refill. A flood from one address gets 429 at ~1 attempt/s instead of one HMAC per attempt.
  */
@@ -130,29 +132,30 @@ export function createKeyedRateLimiter(
   };
 }
 
-/** The eight hextets of an IPv6 address, zone id dropped; `::` expanded to zeros. */
+/**
+ * The eight hextets of an IPv6 address (no zone id); `::` expanded to zeros, leading zeros and case
+ * dropped, so one address has one form however a proxy wrote it.
+ */
 function ipv6Hextets(address: string): string[] {
-  const [head = "", tail] = (address.split("%")[0] ?? "").split("::");
+  const [head = "", tail] = address.split("::");
   const headParts = head ? head.split(":") : [];
   const tailParts = tail ? tail.split(":") : [];
   const zeros = Array<string>(Math.max(0, 8 - headParts.length - tailParts.length)).fill("0");
-  return tail === undefined ? headParts : [...headParts, ...zeros, ...tailParts];
+  const hextets = tail === undefined ? headParts : [...headParts, ...zeros, ...tailParts];
+  return hextets.map((hextet) => Number.parseInt(hextet, 16).toString(16));
 }
 
 /**
- * The upgrade-limit bucket for a socket's remote address: IPv4 (also IPv4-mapped IPv6) by address, IPv6
+ * The upgrade-limit bucket for a client address: IPv4 (also IPv4-mapped IPv6) by address, IPv6
  * by its /64, because one host is usually handed a whole /64 and could otherwise rotate through buckets.
  */
 export function upgradeRateLimitKey(address: string | undefined): string {
   if (!address) {
     return "unknown";
   }
-  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(address);
-  if (mapped?.[1]) {
-    return mapped[1];
+  const normalised = normaliseAddress(address);
+  if (!normalised.includes(":")) {
+    return normalised;
   }
-  if (!address.includes(":")) {
-    return address;
-  }
-  return `${ipv6Hextets(address).slice(0, 4).join(":").toLowerCase()}::/64`;
+  return `${ipv6Hextets(normalised).slice(0, 4).join(":")}::/64`;
 }

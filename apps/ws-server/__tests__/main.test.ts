@@ -36,6 +36,15 @@ describe("main", () => {
     }
   });
 
+  it("refuses to start when every address would be a trusted proxy", async () => {
+    const result = await main({ ...validEnv, WS_TRUSTED_PROXIES: "0.0.0.0/0" }, new FakeProcess());
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain("WS_TRUSTED_PROXIES");
+    }
+  });
+
   it.each(["SIGTERM", "SIGINT"] as const)("shuts down gracefully on %s", async (signal) => {
     const proc = new FakeProcess();
     const result = await main(validEnv, proc);

@@ -1,6 +1,6 @@
 # 0001. Use Auth.js JWT sessions so the WS server can authenticate without the database
 
-- **Status:** Accepted (amended 2026-09-26, see addendum)
+- **Status:** Accepted (amended 2026-09-26 and 2026-09-27, see addenda)
 - **Date:** 2026-09-26
 
 ## Context
@@ -89,6 +89,38 @@ unlimited, each costing an HMAC verification.
 **Consequences.**
 - Behind a reverse proxy every client shares the proxy's address and bucket. Deploying behind one
   (Phase 7) needs an explicit trusted-proxy setting before the limit can key on the forwarded address.
+  Done in #30 (`WS_TRUSTED_PROXIES`, next addendum).
 - Many users behind one NAT share a bucket; the burst covers a reconnect storm of a small office, and
   each tab otherwise reconnects about once per ticket lifetime.
 - A first-message ticket was rejected: the socket would open before it is authenticated.
+
+## Addendum (2026-09-27, #30): trusted proxies for the upgrade rate limit
+
+Behind a reverse proxy or load balancer every upgrade arrives from the proxy's address, so all users
+shared one upgrade bucket (30 burst, 1/s) and one busy network could lock everyone out.
+
+**Decision.**
+- `WS_TRUSTED_PROXIES` lists the reverse proxies in front of the WS server: comma-separated IPv4/IPv6
+  addresses and CIDR ranges (e.g. `10.0.0.0/8,fd00::/8`). The default is empty: no peer is trusted and
+  `X-Forwarded-For` is ignored, as before. Empty entries, ports, hostnames, bad prefixes, ranges wider
+  than /8 (`/0` would let any client choose its bucket) and IPv6 ranges overlapping `::ffff:0:0/96` wider
+  than an IPv4 /8 (a dual-stack listener reports IPv4 peers there, so `::/8` would trust every IPv4
+  client) refuse to start with the variable named.
+- The header is read only when the socket peer is on the list. Its hops are walked from the right; trusted
+  proxies are skipped and the first untrusted hop is the client address, keyed as before (IPv6 by its /64,
+  written in one canonical form so leading zeros or case cannot split one client into several buckets).
+  Hops to its left were written by the client and are never used.
+- A missing header, an all-trusted chain or a malformed nearest hop (`unknown`, `host:port`, garbage) keys
+  the request by the peer, i.e. the proxy's own bucket. IPv4-mapped IPv6 addresses, in any spelling
+  (`::ffff:1.2.3.4`, `::ffff:102:304`, expanded), are treated as the IPv4 address they map, in peers,
+  hops and entries alike (`::ffff:a00:0/104` is `10.0.0.0/8`).
+- An explicit list was chosen over a boolean or hop count ("trust one hop"): exposed directly, such a
+  setting would trust the client itself. The limit still runs before any parsing or HMAC work, and the
+  header is never logged; the startup log shows how many proxies are configured.
+
+**Consequences.**
+- Operators list only their proxies' own addresses. Listing a range that contains clients lets those
+  clients pick their bucket again.
+- A proxy that appends `host:port` entries falls back to the proxy bucket; revisit if the deployment
+  platform does this.
+- RFC 7239 `Forwarded` and `X-Real-IP` are not read.

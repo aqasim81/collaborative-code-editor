@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Trusted proxies for the upgrade rate limit (#30)
+- New WS-server setting `WS_TRUSTED_PROXIES`: comma-separated IP addresses and CIDR ranges of the reverse proxies in front of the server; empty by default, which keeps today's behaviour (`X-Forwarded-For` ignored)
+- When the socket peer is a listed proxy, the per-IP upgrade limit keys on the rightmost `X-Forwarded-For` hop that is not itself a trusted proxy, so clients behind one proxy no longer share one bucket; hops a client prepends are never used, and a missing or malformed header falls back to the proxy's own bucket
+- Invalid entries (empty, hostname, port, bad prefix, ranges wider than /8, IPv6 ranges that would cover IPv4-mapped peers such as `::/8`) refuse to start with the variable named; IPv6 bucket keys ignore leading zeros and case; the startup log shows the number of trusted proxies, never header contents
+- Decision recorded as an ADR 0001 addendum
+- Tests: entry parsing, CIDR and IPv4-mapped matching, trusted and untrusted peers, proxy chains, spoofed prefixes, malformed hops, env parsing, and end-to-end buckets through the upgrade handler
+
 ### Reload hint after prolonged ticket failures (#43)
 - After 8 room ticket fetches in a row have thrown (one to two and a half minutes with the #27 backoff), the room shows a yellow banner: "Having trouble reconnecting. Reloading the page may help." with a Reload button; it helps when every call fails the same way, e.g. a tab left open across a deploy calling a server action that no longer exists
 - Retrying continues meanwhile; the banner clears when a fetch returns or the socket connects, and is hidden while a refusal is shown. The page never reloads by itself, because a reload drops unsynced edits

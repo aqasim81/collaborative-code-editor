@@ -12,6 +12,7 @@ describe("parseEnv", () => {
         WS_TICKET_SECRET: secret,
         WS_PERSISTENCE_DIR: ".leveldb",
         ROOM_GRACE_PERIOD_MS: 30_000,
+        WS_TRUSTED_PROXIES: [],
         LOG_LEVEL: "info",
         NODE_ENV: "development",
       },
@@ -26,6 +27,26 @@ describe("parseEnv", () => {
     });
     expect(result.success && result.data.WS_SERVER_PORT).toBe(9001);
     expect(result.success && result.data.ROOM_GRACE_PERIOD_MS).toBe(500);
+  });
+
+  it("parses a comma-separated trusted-proxy list", () => {
+    const result = parseEnv({ WS_TICKET_SECRET: secret, WS_TRUSTED_PROXIES: "10.0.0.0/8, ::1" });
+    expect(result.success && result.data.WS_TRUSTED_PROXIES).toEqual([
+      { address: "10.0.0.0", prefix: 8, family: "ipv4" },
+      { address: "::1", prefix: 128, family: "ipv6" },
+    ]);
+  });
+
+  it.each([
+    "10.0.0.1,",
+    "proxy.internal",
+    "0.0.0.0/0",
+  ])("rejects the trusted-proxy list %j, quoting the entry", (value) => {
+    const result = parseEnv({ WS_TICKET_SECRET: secret, WS_TRUSTED_PROXIES: value });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain('WS_TRUSTED_PROXIES: "');
+    }
   });
 
   it.each([

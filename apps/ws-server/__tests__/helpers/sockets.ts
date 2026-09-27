@@ -2,9 +2,13 @@ import type { ServerMessage } from "@collab-editor/shared";
 import { WebSocket } from "ws";
 
 /** Resolves with the HTTP status when the server refuses the upgrade; rejects if it opens. */
-export function expectUpgradeRejected(url: string, protocols: string[] = []): Promise<number> {
+export function expectUpgradeRejected(
+  url: string,
+  protocols: string[] = [],
+  headers: Record<string, string> = {},
+): Promise<number> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url, protocols);
+    const ws = new WebSocket(url, protocols, { headers });
     ws.on("unexpected-response", (req, res) => {
       req.destroy();
       resolve(res.statusCode ?? 0);
