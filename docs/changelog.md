@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### /next-issue follows the per-issue checklist (#64)
+- `.claude/commands/next-issue.md` names the checklist's steps instead of numbering them. Each phase runs only the touched packages' tests (`pnpm --filter <pkg> test`, plus `tsc --noEmit` when types changed) and commits; once per issue come Simplify on the whole diff, the invariant audit, one full `make verify`, the PR, code review, the merge and `main` CI, bookkeeping, closing the issue, intake and `ISSUE <N> DONE`
+- The invariant audit is skipped for docs-only diffs (`docs/**`, `*.md`, `README.md`, `LICENSE`, `docs/media/**`), with "audit skipped: docs-only" in the PR body; it always runs when `apps/`, `packages/`, `.claude/hooks/` or `.github/` changed. `.claude/rules/ai-native-workflow.md` "Fresh eyes" says the same
+- Intake writes new checklists from `plans/issues/_checklist-template.md`; older checklists with a 13-step loop per phase are still accepted, each old step ticked by its named equivalent
+
 ### Phase 7 — README and demo (#38)
 - `README.md`: pitch, badges, demo GIF, quickstart, features, a Mermaid architecture diagram with the data flow, key decisions linking ADRs 0001–0003, quality and invariants, full setup (GitHub OAuth app, every env variable, sample room, hooks, Apple Silicon `leveldown`, production run, re-recording the demo), status and roadmap. `docs/status.md` points to it for setup
 - `LICENSE` (MIT)

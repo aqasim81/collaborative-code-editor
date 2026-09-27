@@ -20,7 +20,8 @@ code, not the test. For UI or document output, render it, look at it, compare wi
 read-only) and fix the code.
 
 **Fresh eyes.** Use the `verify-app` subagent to check finished work, `invariant-auditor` when core logic
-changes, `code-simplifier` before a PR. The agent that wrote the code never approves it.
+changes, `code-simplifier` before a PR. The agent that wrote the code never approves it. Skip
+`invariant-auditor` when a change touches only docs (`docs/**`, `*.md`, `README.md`, `LICENSE`, `docs/media/**`).
 
 **Fix the system, not the output.** When a result misses the bar, change the check, skill, hook or CLAUDE.md
 so it can't recur. When Claude makes the same mistake twice, add it to the mistakes section of CLAUDE.md ("Things Claude gets wrong" or "Known mistakes to avoid").

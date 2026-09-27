@@ -14,14 +14,14 @@ session for the next issue (that fresh session is the checklist's `/clear`). Do 
 
 ## 0. Intake (owner's standing instruction)
 
-Run this before picking the issue, and again at step 13 just before printing `ISSUE <N> DONE` (so follow-ups
-filed during the session are planned too). The rules are the "Intake" section of `plans/issues/README.md`:
+Run this before picking the issue, and again just before printing `ISSUE <N> DONE` (so follow-ups filed
+during the session are planned too). The rules are the "Intake" section of `plans/issues/README.md`:
 
 - `gh issue list --state open --limit 100 --json number,title`. Every open issue missing from the order table
   (except the umbrella #10) is new.
-- For each new issue, read the code it touches, then write `plans/issues/<N>/implementation-plan.md`,
-  `phases/phase-<k>-<name>.md` and `checklist.md` (13-step loop per phase, boxes unticked) in the format of
-  the existing folders.
+- For each new issue, read the code it touches, then write `plans/issues/<N>/implementation-plan.md` and
+  `phases/phase-<k>-<name>.md` in the format of the existing folders, and `checklist.md` from
+  `plans/issues/_checklist-template.md` (steps 1–6 per phase, issue-end steps 7–15, boxes unticked).
 - Add its row after the `in progress` row (or the last `done` row), never after #13, and renumber the order.
 - Planning an issue is not working on it: continue with your own single issue.
 
@@ -44,23 +44,41 @@ filed during the session are planned too). The rules are the "Intake" section of
 ## 3. Follow the checklist strictly
 
 Read `CLAUDE.md`, `docs/status.md`, `gh issue view <N>`, `plans/issues/<N>/implementation-plan.md`, then
-work `plans/issues/<N>/checklist.md` phase by phase, steps 1–13 in order, reading each phase's file in
-`plans/issues/<N>/phases/` at its step 1. Tick each box as soon as its step is done.
+work `plans/issues/<N>/checklist.md` in order: every phase, then the issue-end steps once. Read each phase's
+file in `plans/issues/<N>/phases/` when you plan that phase. Tick each box as soon as its step is done.
 
-- Step 5: run the `simplify` skill. Step 9: run the `code-review` skill on the PR and fix what it finds.
-- Step 6/7: `make verify` must print `VERIFY OK`; fix the code, not the tests.
-- Step 8: write the PR body (from `.github/PULL_REQUEST_TEMPLATE.md`) to the scratchpad and pass it with
-  `--body-file`.
-- **Step 10 — merge without asking.** The owner has authorised merging inside this loop. Wait with
+**Every phase** (plan, review the plan, implement with tests, check the tests, then):
+- **Targeted tests:** `pnpm --filter <pkg> test` for each package the phase changed (`@collab-editor/web`,
+  `@collab-editor/ws-server`; a `packages/shared` change runs both apps), plus `pnpm --filter <pkg> exec tsc
+  --noEmit` when types changed. A phase that changes only docs or harness files runs nothing here, or
+  `bash .claude/hooks/tests/guard-bash.test.sh` when a hook changed. Fix the code, not the tests.
+- **Commit** the phase with a conventional message referencing the issue.
+
+**Once per issue**, after the last phase:
+- **Simplify:** run the `simplify` skill once on the whole diff (`git diff main...HEAD`) and commit any cleanups.
+- **Invariant audit:** run the `invariant-auditor` agent on the diff. Skip it when the diff touches only docs
+  (`docs/**`, `*.md`, `README.md`, `LICENSE`, `docs/media/**`) and write "audit skipped: docs-only" in the PR
+  body. Always run it when anything under `apps/`, `packages/`, `.claude/hooks/` or `.github/` changed.
+- **Full gate:** `make verify` must print `VERIFY OK` (and `pnpm build` must exit 0 if the plan asks); fix the
+  code, not the tests.
+- **PR:** write the PR body (from `.github/PULL_REQUEST_TEMPLATE.md`, with `Closes #<N>`) to the scratchpad and
+  pass it to `gh pr create` with `--body-file`.
+- **Code review:** run the `code-review` skill on the PR, fix what it finds and push.
+- **Merge without asking.** The owner has authorised merging inside this loop. Wait with
   `gh pr checks <PR> --watch` until every check is green, then
   `gh pr merge <PR> --squash --delete-branch --subject "<PR title>" --body "<short summary>"`.
   Then `git switch main && git pull` and wait for the `main` CI run for the merge commit to finish
   (`gh run list --branch main --limit 1`, `gh run watch <id> --exit-status`). It must succeed.
-- Step 11: tick the checklist, set the README row to `done (#<PR>)`, and for Phase 7 issues tick
+- **Bookkeeping:** tick the checklist, set the README row to `done (#<PR>)`, and for Phase 7 issues tick
   `plans/issues/10/checklist.md`. After #38 merges, close umbrella issue #10 with a comment.
-- Step 12: confirm the issue is `CLOSED`; if not, close it with a comment linking the PR.
-- **Step 13 — do not start the next issue.** Stop any dev server or other background process you started,
-  make sure you are on a clean, pulled `main`, print `ISSUE <N> DONE` and end the session.
+- **Close:** confirm the issue is `CLOSED`; if not, close it with a comment linking the PR.
+- **Intake and stop — do not start the next issue.** Run the intake (§0) again. Stop any dev server or other
+  background process you started, make sure you are on a clean, pulled `main`, print `ISSUE <N> DONE` and end
+  the session.
+
+A checklist with a 13-step loop per phase is the old format: follow the steps above. Tick a phase's steps 5–7
+once its targeted tests pass and it is committed (so resuming lands on the next phase), and tick every phase's
+step 8 with PR, 9 with Code review, 10 with Merge, 11 with Bookkeeping, 12 with Close and 13 with Intake and stop.
 
 ## Issue #13
 

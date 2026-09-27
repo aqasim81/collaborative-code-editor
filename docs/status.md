@@ -36,6 +36,7 @@ Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence
 - [x] README (#38): pitch, demo GIF, quickstart, features, architecture diagram, key decisions, quality and invariants, full setup, roadmap; MIT `LICENSE`. The GIF is recorded by `apps/web/e2e/record-demo.ts` (two demo users, minted session cookies). The setup was followed from a fresh clone up to two users syncing in one room; real GitHub sign-in on a fresh clone is left to the owner
 - [x] `.env.example` lists every variable both apps read, including `WS_TRUSTED_PROXIES` and `WS_PERSISTENCE_DIR`; a test per app keeps it in sync with the env schema (#47)
 - [x] Shell writes to protected paths (migrations, `components/ui`) are blocked by `guard-bash.sh`; the generators still work, and hook tests run in `make verify` (#62)
+- [x] `/next-issue` follows the per-issue checklist: targeted tests per phase, one full gate per issue, the invariant audit skipped for docs-only diffs, older checklists still accepted (#64)
 - [x] Phase 4: WS server (`ws` + pino) with HS256 room tickets issued by the web app after a membership check (ADR 0001 addendum), room manager with grace-period cleanup, Zod-validated and rate-limited messages, `GET /health`, graceful shutdown (#7). `/health` and the 401 on a ticketless upgrade checked against the dev server
 
 ## Blockers
