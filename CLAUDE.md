@@ -185,7 +185,7 @@ See `docs/architecture.md` and `docs/adr/` for diagrams and decisions.
 - **PR titles:** `type(scope): description (#issue)`
 - **Merge strategy:** Squash merge for feature/fix branches
 - **`main` is protected:** PRs only; `Verify` and `Build` required and up to date with `main` (`gh pr update-branch <PR>` when behind); admins included; no force pushes or deletions
-- **Old numbers:** issue and PR numbers in commits up to `96a1184` (history before this repo went public, #1 was #13 there) refer to the private `collaborative-code-editor-archive` repo
+- **Old numbers:** issue and PR numbers in commits up to `96a1184` (history before this repo went public, #1 was #13 there) refer to the old private repo, now deleted; `docs/history/pre-public.md` keeps its issues and PRs by old number
 - **One commit per logical change** — commit after each working chunk
 - **Git hooks (lefthook):** pre-commit Biome + gitleaks; commit-msg commitlint + no commits on `main`; pre-push `make verify`. Run `lefthook install` after cloning
 - **Commit messages:** Enforced by commitlint (conventional format)

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Pre-public issue and PR history (#13)
+- `docs/history/pre-public.md` keeps the old private repo's 34 issues and 34 PRs, keyed by the old numbers that commits up to `96a1184` use, with each merged PR linked to its commit here. References to internal workflow notes and private names are left out
+
 ### Intake skips owner tasks
 - `/next-issue` intake skips issues labelled `owner-task` (manual work for the owner, such as the pinned #11 checklist), so the loop never plans or runs them
 
@@ -25,7 +28,7 @@ All notable changes to this project will be documented in this file.
 
 ### Repository — public, protected main (#1, was #13)
 - `intent/`, `specs/`, `docs/templates/`, `docs/ENGINEERING_WORKFLOW.md` and `docs/REPO_STANDARDS.md` are local and gitignored; the workflow docs say so
-- History rewritten into a new public repo without those paths or co-author trailers (gitleaks clean); the old repo is the private `collaborative-code-editor-archive`, which keeps the earlier issues and PRs
+- History rewritten into a new public repo without those paths or co-author trailers (gitleaks clean); the old repo's issues and PRs are kept in `docs/history/pre-public.md`
 - `main` requires the `Verify` and `Build` checks, up to date with `main`, for admins too; linear history, no force pushes or deletions. Secret scanning and push protection are on
 
 ### The docs-only audit skip is an allow-list (#67)
