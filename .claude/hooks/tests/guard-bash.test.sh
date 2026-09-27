@@ -9,15 +9,16 @@ M=apps/web/prisma/migrations
 U=apps/web/components/ui
 failures=0
 
-run() { # run <expected exit> <command>; the project dir is $dir (default: this repo)
-  local got
-  jq -n --arg c "$2" '{tool_input: {command: $c}}' \
-    | env -u RELEASE_APPROVAL CLAUDE_PROJECT_DIR="${dir:-$root}" bash "$hook" >/dev/null 2>&1
-  got=$?
-  if [[ "$got" != "$1" ]]; then
-    echo "FAIL (want $1, got $got): $2" >&2
+check() { # check <expected exit> <got> <label>
+  if [[ "$2" != "$1" ]]; then
+    echo "FAIL (want $1, got $2): $3" >&2
     failures=$((failures + 1))
   fi
+}
+run() { # run <expected exit> <command>; the project dir is $dir (default: this repo)
+  jq -n --arg c "$2" '{tool_input: {command: $c}}' \
+    | env -u RELEASE_APPROVAL CLAUDE_PROJECT_DIR="${dir:-$root}" bash "$hook" >/dev/null 2>&1
+  check "$1" $? "$2"
 }
 blocked() { run 2 "$1"; }
 allowed() { run 0 "$1"; }
@@ -108,13 +109,13 @@ allowed "git commit -m 'deploy to prod later'"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 g() { git -C "$1" -c user.name=t -c user.email=t@t -c commit.gpgsign=false "${@:2}" >/dev/null 2>&1; }
-repo() { # repo <name> <branch>: one commit on <branch>, with an origin/main ref
+repo() { # repo <name> <branch> [no-origin]: one commit on <branch>, with an origin/main ref unless no-origin
   git init -q -b "$2" "$tmp/$1" && g "$tmp/$1" commit -q --allow-empty -m init
-  g "$tmp/$1" update-ref refs/remotes/origin/main HEAD
+  [[ -n "${3:-}" ]] || g "$tmp/$1" update-ref refs/remotes/origin/main HEAD
 }
 repo on-main main
 repo on-feat feat/x
-repo new-repo main && g "$tmp/new-repo" update-ref -d refs/remotes/origin/main
+repo new-repo main no-origin
 git init -q -b main "$tmp/unborn"
 
 dir="$tmp/on-main"
@@ -142,13 +143,8 @@ unset dir
 
 # Commits on main are refused by the lefthook commit-msg script
 commit_hook() { # commit_hook <expected exit> <repo>
-  local got
   (cd "$tmp/$2" && bash "$root/.claude/hooks/no-commit-on-main.sh") >/dev/null 2>&1
-  got=$?
-  if [[ "$got" != "$1" ]]; then
-    echo "FAIL (want $1, got $got): no-commit-on-main.sh in $2" >&2
-    failures=$((failures + 1))
-  fi
+  check "$1" $? "no-commit-on-main.sh in $2"
 }
 commit_hook 1 on-main
 commit_hook 0 on-feat

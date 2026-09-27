@@ -33,28 +33,30 @@ if [[ "$code" =~ $deploy_word && "$code" =~ $prod_word && -z "${RELEASE_APPROVAL
   block "production deploys need a release authorization. The owner sets RELEASE_APPROVAL=<ticket or date+initials>, then retry."
 fi
 # Pushes to main. Each `git push` names its destinations (main/master in a refspec such as `main`,
-# `HEAD:main` or `x:refs/heads/main`) or prints HEAD when it has no refspec or only HEAD (and no --tags),
-# which means the current branch. A `git switch`/`checkout` earlier in the command makes the current
-# branch unknown, so only named destinations count after one.
+# `HEAD:main` or `x:refs/heads/main`), or means the current branch when it has no refspec or only HEAD
+# (and no --tags). A `git switch`/`checkout` earlier in the command makes the current branch unknown, so
+# only named destinations count after one.
 root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-for dest in $(printf '%s' "$code" | perl -0777 -ne '
-  while (/(?:^|[;&|(\s])git\s+push\b([^;&|)\n]*)/g) {
-    my $rest = $1;
-    my $switched = $` =~ /git\s+(?:switch|checkout)\b/;
-    my @args = split " ", $rest;
-    my @refs = grep { !/^-/ } @args;
-    shift @refs;
-    my @named = map { m{^\+?(?:[^:]*:)?(?:refs/heads/)?(main|master)$} ? $1 : () } @refs;
-    if (@named) { print "$_\n" for @named }
-    elsif (!$switched && !grep({ $_ eq "--tags" } @args) && !grep({ $_ ne "HEAD" } @refs)) { print "HEAD\n" }
-  }'); do
-  [[ "$dest" == HEAD ]] && dest="$(git -C "$root" branch --show-current 2>/dev/null || true)"
-  [[ "$dest" == main || "$dest" == master ]] || continue
-  # A new repository's first push (origin has no such branch yet, so no protection either) is allowed.
-  if git -C "$root" rev-parse --verify -q "refs/remotes/origin/$dest" >/dev/null; then
-    block "do not push to $dest. Branch first (git switch -c <type>/<issue>-<name>), push the branch and open a pull request."
-  fi
-done
+if [[ "$code" =~ git[[:space:]]+push ]]; then
+  current="$(git -C "$root" branch --show-current 2>/dev/null || true)"
+  for dest in $(printf '%s' "$code" | CURRENT="$current" perl -0777 -ne '
+    while (/(?:^|[;&|(\s])git\s+push\b([^;&|)\n]*)/g) {
+      my $rest = $1;
+      my $switched = $` =~ /git\s+(?:switch|checkout)\b/;
+      my @args = split " ", $rest;
+      my @refs = grep { !/^-/ } @args;
+      shift @refs;
+      my @named = map { m{^\+?(?:[^:]*:)?(?:refs/heads/)?(main|master)$} ? $1 : () } @refs;
+      if (@named) { print "$_\n" for @named }
+      elsif (!$switched && !grep({ $_ eq "--tags" } @args) && !grep({ $_ ne "HEAD" } @refs)
+             && $ENV{CURRENT} =~ /^(main|master)$/) { print "$ENV{CURRENT}\n" }
+    }'); do
+    # A new repository's first push (origin has no such branch yet, so no protection either) is allowed.
+    if git -C "$root" rev-parse --verify -q "refs/remotes/origin/$dest" >/dev/null; then
+      block "do not push to $dest. Branch first (git switch -c <type>/<issue>-<name>), push the branch and open a pull request."
+    fi
+  done
+fi
 # Protected paths (.claude/protected-paths.txt, also enforced for Edit/Write by guard-edits.sh):
 # no shell writes into them. Cheap check first: run the parser only when the command names the
 # last two components of a protected path, or its first one (a delete of a parent folder).
