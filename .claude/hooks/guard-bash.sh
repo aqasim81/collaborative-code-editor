@@ -6,7 +6,8 @@
 #   3. Production gate: commands that run "deploy" with "prod"/"production" (whole words, outside
 #      quoted text and heredocs) need RELEASE_APPROVAL set by the owner.
 set -euo pipefail
-cmd="$(jq -r '.tool_input.command // empty')"
+input="$(cat)"
+cmd="$(jq -r '.tool_input.command // empty' <<< "$input")"
 block() { echo "BLOCKED by .claude/hooks/guard-bash.sh: $1" >&2; exit 2; }
 if [[ "$cmd" =~ git[[:space:]]+push.*(--force|-f([[:space:]]|$)|--force-with-lease) ]]; then
   block "force-push is not allowed. Add a new commit instead."
@@ -15,7 +16,8 @@ if [[ "$cmd" =~ (cat|less|more|head|tail|grep|source|\.)[[:space:]].*\.env([^.]|
   block "reading .env through the shell is not allowed. Use .env.example for variable names."
 fi
 # Production gate: only look at what the shell runs. Heredoc bodies and quoted
-# strings (commit messages, PR bodies, grep patterns) are dropped first, unless
+# strings (commit messages, PR bodies, grep patterns) are dropped first (each quoted
+# string leaves an empty "" word, so argument positions survive), unless
 # the command runs a string as code (sh -c, eval, ssh). "deploy" and
 # "prod"/"production" must be whole words, so "producer" or "deployed" in a
 # path does not count.
@@ -23,8 +25,8 @@ code="$cmd"
 if [[ ! "$cmd" =~ (^|[^[:alnum:]_])((ba|z)?sh[[:space:]]+-[[:alpha:]]*c|eval|ssh)([[:space:]]|$) ]]; then
   code="$(printf '%s' "$cmd" | perl -0777 -pe '
     s/<<-?[ \t]*(["\x27]?)(\w+)\1([^\n]*)\n.*?^[ \t]*\2[ \t]*$/$3/gms;
-    s/"(?:[^"\\]|\\.)*"//gs;
-    s/\x27[^\x27]*\x27//gs;
+    s/"(?:[^"\\]|\\.)*"/""/gs;
+    s/\x27[^\x27]*\x27/""/gs;
   ')"
 fi
 deploy_word='(^|[^[:alnum:]])deploy(s|ment)?([^[:alnum:]]|$)'
@@ -36,21 +38,28 @@ fi
 # `HEAD:main` or `x:refs/heads/main`), or means the current branch when it has no refspec or only HEAD
 # (and no --tags). A `git switch`/`checkout` of a branch earlier in the command makes the current branch
 # unknown, so only named destinations count after one. On main, `git commit --no-verify` (which skips the
-# lefthook commit-msg refusal) is blocked too.
+# lefthook commit-msg refusal) is blocked too. The current branch is the one where the shell runs (`cwd`).
 root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 if [[ "$code" =~ git[[:space:]]+(push|commit) ]]; then
-  current="$(git -C "$root" branch --show-current 2>/dev/null || true)"
+  here="$(jq -r '.cwd // empty' <<< "$input")"
+  here="${here:-$root}"
+  current="$(git -C "$here" branch --show-current 2>/dev/null || true)"
   if [[ ( "$current" == main || "$current" == master ) \
-        && "$code" =~ git[[:space:]]+commit[^\;\&\|]*[[:space:]](--no-verify|-n)([[:space:]]|$) ]]; then
+        && "$code" =~ git[[:space:]]+commit[^\;\&\|]*[[:space:]](--no-verify|-[[:alpha:]]*n[[:alpha:]]*)([[:space:]]|$) ]]; then
     block "do not commit on $current. Branch first: git switch -c <type>/<issue>-<name>"
   fi
   for dest in $(printf '%s' "$code" | CURRENT="$current" perl -0777 -ne '
-    while (/(?:^|[;&|(\s"\x27\x60])git\s+push\b([^;&|)\n"\x27\x60]*)/g) {
+    while (/(?:^|[;&|(\s"\x27\x60])git\s+push\b([^;&|)\n]*)/g) {
       my $rest = $1;
-      my $switched = $` =~ /git\s+(?:switch|checkout)\s+(?!--(?:\s|$))\S/;
+      my $before = $`;
+      my $switched = $before =~ /git\s+switch\s/
+        || grep { !/(?:^|\s)(?:--|\.)(?:\s|$)/ } $before =~ /git\s+checkout\s+([^;&|\n]*)/g;
       my @args = split " ", $rest;
       my ($tags, @refs) = (0);
       while (defined(my $w = shift @args)) {
+        # "" is a quoted word (its text was dropped above): some refspec other than HEAD.
+        if ($w eq q("")) { push @refs, "?"; next }
+        $w =~ tr/"\x27\x60//d;
         if ($w =~ /^(?:-o|--push-option|--repo|--receive-pack|--exec)$/) { shift @args }
         elsif ($w eq "--tags") { $tags = 1 }
         elsif ($w !~ /^-/) { push @refs, $w }
@@ -62,7 +71,7 @@ if [[ "$code" =~ git[[:space:]]+(push|commit) ]]; then
              && $ENV{CURRENT} =~ /^(main|master)$/) { print "$ENV{CURRENT}\n" }
     }'); do
     # A new repository's first push (origin has no such branch yet, so no protection either) is allowed.
-    if git -C "$root" rev-parse --verify -q "refs/remotes/origin/$dest" >/dev/null; then
+    if git -C "$here" rev-parse --verify -q "refs/remotes/origin/$dest" >/dev/null; then
       block "do not push to $dest. Branch first (git switch -c <type>/<issue>-<name>), push the branch and open a pull request."
     fi
   done

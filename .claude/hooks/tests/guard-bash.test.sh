@@ -15,8 +15,8 @@ check() { # check <expected exit> <got> <label>
     failures=$((failures + 1))
   fi
 }
-run() { # run <expected exit> <command>; the project dir is $dir (default: this repo)
-  jq -n --arg c "$2" '{tool_input: {command: $c}}' \
+run() { # run <expected exit> <command>; the project dir is $dir (default: this repo), the shell's cwd $cwd (default: $dir)
+  jq -n --arg c "$2" --arg d "${cwd:-${dir:-$root}}" '{tool_input: {command: $c}, cwd: $d}' \
     | env -u RELEASE_APPROVAL CLAUDE_PROJECT_DIR="${dir:-$root}" bash "$hook" >/dev/null 2>&1
   check "$1" $? "$2"
 }
@@ -135,6 +135,12 @@ blocked "git push --repo origin"
 blocked "git push origin --tags main"
 blocked "git commit --no-verify -m x"
 blocked "git commit -n -m x"
+blocked "git commit -anm x"
+allowed "git commit --amend --no-edit"
+allowed "git push origin 'feat/x'"
+blocked "git checkout . && git push"
+blocked "git checkout HEAD -- README.md && git push"
+cwd="$tmp/on-feat" allowed "git push"   # the shell runs in a feature-branch worktree
 allowed "git commit -m x"   # the lefthook commit-msg script refuses it, not this guard
 allowed "git push origin v1.2.3"   # /release pushes only the tag; main moves through the release PR
 allowed "git push origin --tags"
