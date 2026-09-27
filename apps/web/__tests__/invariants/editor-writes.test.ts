@@ -12,12 +12,13 @@ const YJS_DIR = "lib/yjs/";
 
 const CALL =
   /\bdispatch\(|\.setState\(|\bEditorState\.create\(|\bnew EditorView\(|\.insert\(|\.applyDelta\(|\.delete\(/g;
-const TRANSACTION_WRITE_KEY = /[{,]\s*(changes|selection)\s*[:,}]/;
-const DOC_KEY = /[{,]\s*doc\s*[:,}]/;
 const DOC_VALUE = /[{,]\s*doc\s*:\s*([^,}]+)/;
 const SEED_FROM_TEXT = /^\w+\.toString\(\)$/;
 
 const blank = (text: string) => text.replace(/[^\n]/g, " ");
+/** Whether an object literal's text has one of `keys` (a regex alternation), named or shorthand. */
+const hasKey = (args: string, keys: string) =>
+  new RegExp(`[{,]\\s*(?:${keys})\\s*[:,}]`).test(args);
 
 /** Blanks out comments and string contents, keeping every newline so line numbers still match the source. */
 function codeOnly(source: string): string {
@@ -72,13 +73,13 @@ function writeReason(file: string, call: string, args: string): string | null {
       if (!literal) {
         return "dispatch of a prepared transaction";
       }
-      return TRANSACTION_WRITE_KEY.test(args) ? "dispatch with changes or selection" : null;
+      return hasKey(args, "changes|selection") ? "dispatch with changes or selection" : null;
     case ".setState(":
       return "setState on an editor";
     case "EditorState.create(":
-      return DOC_KEY.test(args) ? "EditorState.create with a doc" : null;
+      return hasKey(args, "doc") ? "EditorState.create with a doc" : null;
     case "new EditorView(": {
-      if (!DOC_KEY.test(args)) {
+      if (!hasKey(args, "doc")) {
         return null;
       }
       const value = DOC_VALUE.exec(args)?.[1]?.trim() ?? "";
