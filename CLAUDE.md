@@ -10,7 +10,7 @@ Real-time collaborative code editor where multiple users simultaneously edit a s
 
 ## Status
 
-Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47). Next: purge a deleted room's document (#48), then invite links (#36). History, blockers and local setup: `docs/status.md`.
+Phase 6 (presence and cursors, #9) complete. Phase 7 (room management and polish, #10) in progress: room dashboard with create, list and delete done (#35); `.env.example` synced with the env schemas (#47); deleting a room purges its WS-server document through an outbox (#48). Next: invite links (#36). History, blockers and local setup: `docs/status.md`.
 
 ## Stack
 
@@ -67,7 +67,7 @@ collaborative-code-editor/
 # Development
 pnpm dev                    # Start all apps (Next.js on Turbopack + WS server via tsx watch)
 docker compose up -d        # Postgres 16 on localhost:5434
-cp .env.example apps/web/.env   # one env file: the WS server dev script also reads ../web/.env
+cp .env.example apps/web/.env   # one env file: the WS server dev script also reads ../web/.env; WS_SERVER_URL optional
 pnpm --filter @collab-editor/web db:migrate   # also db:deploy, db:studio
 pnpm --filter @collab-editor/web db:seed      # dev seed; creates /room/seed-room
 
@@ -119,7 +119,9 @@ Three packages: `apps/web` (Next.js), `apps/ws-server` (Node `ws`), `packages/sh
    rooms down after a grace period.
 5. Presence: the server replaces every awareness `user` with the ticket identity and binds one client id per
    connection. A taken id closes with 4002 and the client picks a new id (ADR 0002 addendum). An expired ticket
-   closes with 4001 and the client reconnects with a new ticket.
+   closes with 4001 and the client reconnects with a new ticket. Deleting a room calls `DELETE /rooms/<id>` on the WS
+   server with a 60 s purge ticket (`lib/room-purge.ts`, via the `RoomPurge` outbox): its sockets close with 4003 and
+   the client does not reconnect (ADR 0001 addendum #48).
 
 Entry point: `src/index.ts` → `src/main.ts` (env via Zod, LevelDB open, start, SIGINT/SIGTERM shutdown).
 See `docs/architecture.md` and `docs/adr/` for diagrams and decisions.

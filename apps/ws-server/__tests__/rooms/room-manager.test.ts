@@ -109,6 +109,46 @@ describe("room manager", () => {
     expect(second).not.toBe(first);
   });
 
+  it("evict() settles once the room's state is destroyed", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const rooms = manager(() => held);
+    const state = rooms.join("r1", "a").state;
+    let settled = false;
+    void rooms.evict("r1").then(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release();
+    await vi.waitFor(() => expect(settled).toBe(true));
+    expect(state.destroyed).toBe(true);
+  });
+
+  it("evict() returns a destroy already under way, and settles at once for an unknown room", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const rooms = manager(() => held);
+    const state = rooms.join("r1", "a").state;
+    rooms.leave("r1", "a");
+    vi.advanceTimersByTime(GRACE_MS);
+    let settled = false;
+    void rooms.evict("r1").then(() => {
+      settled = true;
+    });
+
+    await expect(rooms.evict("unknown")).resolves.toBeUndefined();
+    expect(settled).toBe(false);
+    release();
+    await vi.waitFor(() => expect(settled).toBe(true));
+    expect(state.destroyed).toBe(true);
+  });
+
   it("makes a new instance wait until the previous one is destroyed", async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => {

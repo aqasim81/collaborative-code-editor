@@ -49,3 +49,36 @@ export const TICKET_PROTOCOL_PREFIX = "ticket.";
 export function roomTicketProtocols(ticket: string): string[] {
   return [ROOM_PROTOCOL, `${TICKET_PROTOCOL_PREFIX}${ticket}`];
 }
+
+/**
+ * WebSocket close code the WS server sends to every connection of a room that was deleted. The room is
+ * gone for good: clients must not reconnect.
+ */
+export const ROOM_DELETED_CLOSE_CODE = 4003;
+
+/** Lifetime of a purge ticket. The WS server rejects tickets that claim a longer one. */
+export const PURGE_TICKET_TTL_SECONDS = 60;
+
+/** `aud` claim that marks a JWT as a purge ticket, so a room ticket can't be used as one (or vice versa). */
+export const PURGE_TICKET_AUDIENCE = "collab-editor:ws-admin";
+
+/**
+ * Claims of the short-lived HS256 ticket the web app signs after deleting a room, so the WS server
+ * purges the room's document. Sent as `Authorization: Bearer` on `DELETE /rooms/<id>`.
+ */
+export interface PurgeTicketClaims {
+  /** The owner who deleted the room, for the log. */
+  sub: string;
+  aud: string;
+  roomId: string;
+  iat: number;
+  exp: number;
+}
+
+/** Prefix of the WS server's HTTP path that purges a room's document (`DELETE /rooms/<id>`). */
+export const ROOM_PURGE_PATH_PREFIX = "/rooms/";
+
+/** The WS server's HTTP path that purges a room's document. */
+export function roomPurgePath(roomId: string): string {
+  return `${ROOM_PURGE_PATH_PREFIX}${roomId}`;
+}

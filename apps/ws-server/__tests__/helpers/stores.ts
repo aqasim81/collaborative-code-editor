@@ -13,6 +13,7 @@ export interface MemoryStore extends DocumentStore {
   gate: Promise<void> | null;
   failLoad: boolean;
   failAppend: boolean;
+  failClear: boolean;
 }
 
 /** In-memory document store with hooks to hold or fail writes. */
@@ -23,6 +24,7 @@ export function createMemoryStore(): MemoryStore {
     gate: null,
     failLoad: false,
     failAppend: false,
+    failClear: false,
     async load(roomId): Promise<Result<Uint8Array>> {
       if (store.failLoad) {
         return { success: false, error: "load failed" };
@@ -37,6 +39,13 @@ export function createMemoryStore(): MemoryStore {
         return { success: false, error: "append failed" };
       }
       store.updates.set(roomId, [...(store.updates.get(roomId) ?? []), update]);
+      return { success: true, data: undefined };
+    },
+    async clear(roomId): Promise<Result<void>> {
+      if (store.failClear) {
+        return { success: false, error: "clear failed" };
+      }
+      store.updates.delete(roomId);
       return { success: true, data: undefined };
     },
     async close() {

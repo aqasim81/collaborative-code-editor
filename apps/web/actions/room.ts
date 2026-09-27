@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { auth } from "@/lib/auth";
 import { toSessionUser } from "@/lib/auth.config";
 import { NOT_SIGNED_IN, type Result } from "@/lib/result";
 import { createRoomSchema, INVALID_ROOM_ID, ROOM_NOT_FOUND, roomIdSchema } from "@/lib/room-input";
+import { maybeSweepRoomPurges, sweepRoomPurges } from "@/lib/room-purge";
 import {
   createRoomWithOwner,
   deleteOwnedRoom,
@@ -35,13 +37,17 @@ export async function createRoom(input: unknown): Promise<Result<{ id: string }>
   }
 }
 
-/** Rooms the signed-in user is a member of, most recently active first (Invariant 2). */
+/**
+ * Rooms the signed-in user is a member of, most recently active first (Invariant 2). Dashboard loads
+ * also retry due room purges (#48), at most once a minute.
+ */
 export async function listRooms(): Promise<Result<RoomSummary[]>> {
   const user = toSessionUser(await auth());
   if (!user) {
     return { success: false, error: NOT_SIGNED_IN };
   }
 
+  after(() => maybeSweepRoomPurges());
   try {
     return { success: true, data: await listRoomsForMember(user.id) };
   } catch {
@@ -51,7 +57,8 @@ export async function listRooms(): Promise<Result<RoomSummary[]>> {
 
 /**
  * Deletes a room the signed-in user owns. A non-member gets the same answer as for a missing room;
- * an editor is told that only the owner can delete it.
+ * an editor is told that only the owner can delete it. After the response, the room's WS-server
+ * document is purged through the outbox (#48); the answer never depends on it.
  */
 export async function deleteRoom(roomId: unknown): Promise<Result<{ id: string }>> {
   const parsed = roomIdSchema.safeParse(roomId);
@@ -73,6 +80,7 @@ export async function deleteRoom(roomId: unknown): Promise<Result<{ id: string }
         error: role === null ? ROOM_NOT_FOUND : "Only the room's owner can delete it",
       };
     }
+    after(() => sweepRoomPurges());
     revalidatePath(DASHBOARD_PATH);
     return { success: true, data: { id: parsed.data } };
   } catch {

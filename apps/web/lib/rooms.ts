@@ -71,12 +71,21 @@ export function createRoomWithOwner(input: {
   });
 }
 
-/** Deletes the room only if the user owns it; returns how many rooms went (0 or 1). Members cascade. */
-export async function deleteOwnedRoom(roomId: string, userId: string): Promise<number> {
-  const { count } = await prisma.room.deleteMany({
-    where: { id: roomId, members: { some: { userId, role: "OWNER" } } },
+/**
+ * Deletes the room only if the user owns it; returns how many rooms went (0 or 1). Members cascade. A
+ * deleted room gets a `RoomPurge` row in the same transaction, so its WS-server document is purged even
+ * if the process dies right after (#48).
+ */
+export function deleteOwnedRoom(roomId: string, userId: string): Promise<number> {
+  return prisma.$transaction(async (tx) => {
+    const { count } = await tx.room.deleteMany({
+      where: { id: roomId, members: { some: { userId, role: "OWNER" } } },
+    });
+    if (count > 0) {
+      await tx.roomPurge.create({ data: { roomId, userId } });
+    }
+    return count;
   });
-  return count;
 }
 
 /** Records activity in a room, skipping the write if it was recorded within the last minute. */

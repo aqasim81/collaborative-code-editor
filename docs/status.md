@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current Phase
-Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence before broadcast. Follow-ups done: #16/#21 (the client-boundary test walks the import graph), #22 (per-connection byte budget), #18 (sockets close at ticket expiry) and #19 (ticket in `Sec-WebSocket-Protocol`, per-IP upgrade limit). Phase 6 (#9): remote cursors with name labels, selections, a presence list and a connection indicator, on server-owned presence identity (#32) and a ping heartbeat (#33); presence is dropped as soon as the server starts closing a connection (#28). A ticket fetch that fails transiently is retried with backoff (#27), and prolonged failures suggest a reload (#43). The client-boundary test also covers server-only packages and server-to-client props (#24). Behind a reverse proxy, the upgrade limit can key on `X-Forwarded-For` from proxies listed in `WS_TRUSTED_PROXIES` (#30). Phase 7 (#10) in progress: signed-in users create, list and delete rooms on the dashboard (#35). `.env.example` lists every env variable, checked by a test (#47). Next: purge a deleted room's document on the WS server (#48), then invite links (#36).
+Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence before broadcast. Follow-ups done: #16/#21 (the client-boundary test walks the import graph), #22 (per-connection byte budget), #18 (sockets close at ticket expiry) and #19 (ticket in `Sec-WebSocket-Protocol`, per-IP upgrade limit). Phase 6 (#9): remote cursors with name labels, selections, a presence list and a connection indicator, on server-owned presence identity (#32) and a ping heartbeat (#33); presence is dropped as soon as the server starts closing a connection (#28). A ticket fetch that fails transiently is retried with backoff (#27), and prolonged failures suggest a reload (#43). The client-boundary test also covers server-only packages and server-to-client props (#24). Behind a reverse proxy, the upgrade limit can key on `X-Forwarded-For` from proxies listed in `WS_TRUSTED_PROXIES` (#30). Phase 7 (#10) in progress: signed-in users create, list and delete rooms on the dashboard (#35). `.env.example` lists every env variable, checked by a test (#47). Deleting a room closes its sockets at once (4003) and purges its document on the WS server through a `RoomPurge` outbox (#48). Next: invite links (#36).
 
 ## Accomplishments
 - [x] Project spec refined and validated
@@ -25,7 +25,8 @@ Phase 5 complete (#8): real-time collaboration over Yjs with LevelDB persistence
 - [x] A ticket fetch that throws is retried with backoff (1 s doubling to 30 s, jittered); a refusal is shown and never retried (#27)
 - [x] After 8 thrown ticket fetches in a row the room suggests a reload with a non-blocking banner that clears once a fetch returns; retrying continues (#43)
 - [x] `WS_TRUSTED_PROXIES` (IPs/CIDRs, default none): the upgrade limit keys on the rightmost untrusted `X-Forwarded-For` hop from a listed proxy, the socket address otherwise (#30)
-- [x] Room dashboard (#35): create a room (name + language) and land in it, rooms listed most recently active first with language, created date and role, owner-only delete with confirmation, links back from the navbar and the room toolbar; shadcn/ui set up. A deleted room's LevelDB document is left on the WS server until #48
+- [x] Room dashboard (#35): create a room (name + language) and land in it, rooms listed most recently active first with language, created date and role, owner-only delete with confirmation, links back from the navbar and the room toolbar; shadcn/ui set up
+- [x] Deleting a room purges it on the WS server (#48): a 60 s purge ticket on `DELETE /rooms/<id>` closes its sockets with 4003 (clients stop reconnecting and show "This room was deleted"), clears its LevelDB document after pending writes and refuses rejoins for one ticket lifetime; purges go through a `RoomPurge` outbox written with the delete and retried with backoff
 - [x] `.env.example` lists every variable both apps read, including `WS_TRUSTED_PROXIES` and `WS_PERSISTENCE_DIR`; a test per app keeps it in sync with the env schema (#47)
 - [x] Phase 4: WS server (`ws` + pino) with HS256 room tickets issued by the web app after a membership check (ADR 0001 addendum), room manager with grace-period cleanup, Zod-validated and rate-limited messages, `GET /health`, graceful shutdown (#7). `/health` and the 401 on a ticketless upgrade checked against the dev server
 
@@ -46,6 +47,7 @@ cp .env.example apps/web/.env     # fill in DATABASE_URL, AUTH_SECRET, AUTH_GITH
 pnpm --filter @collab-editor/web db:migrate
 pnpm --filter @collab-editor/web db:seed   # after the first GitHub sign-in: creates /room/seed-room
 pnpm dev                          # web on :3000, WS server on :8080 (reads apps/web/.env too)
+# WS_SERVER_URL is optional: the web app's room purges default to NEXT_PUBLIC_WS_URL with ws: → http:
 # Apple Silicon: if the WS server fails to load leveldown, build it once:
 pnpm --filter @collab-editor/ws-server rebuild leveldown
 ```
@@ -56,4 +58,4 @@ pnpm --filter @collab-editor/ws-server rebuild leveldown
 1. Add `WS_TICKET_SECRET` (32+ characters, e.g. `openssl rand -hex 32`) to `apps/web/.env` if it is not there yet; local `pnpm dev` and `pnpm build` need it
 2. `./scripts/issue-loop.sh` (or `/next-issue` for one issue) — works the open issues in `plans/issues/README.md` order; Phase 7 (#10) continues with #36 → #38
 3. When deploying the WS server behind a reverse proxy, set `WS_TRUSTED_PROXIES` to the proxy's addresses
-4. Follow-up: purge a deleted room's LevelDB document (#48)
+4. When deploying, run `pnpm --filter @collab-editor/web db:deploy` (the `RoomPurge` migration, #48), and set `WS_SERVER_URL` if the web app reaches the WS server on a private address

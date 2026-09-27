@@ -59,6 +59,23 @@ describe("LevelDB document store", () => {
     await reopened.close();
   });
 
+  it("clears one room's document and leaves the others intact", async () => {
+    const doc = new Y.Doc();
+    doc.getText("t").insert(0, "hello");
+    const update = Y.encodeStateAsUpdate(doc);
+    const store = await open();
+    await store.append("room-1", update);
+    await store.append("room-2", update);
+
+    expect(await store.clear("room-1")).toEqual({ success: true, data: undefined });
+    const cleared = await store.load("room-1");
+    const kept = await store.load("room-2");
+    expect(cleared.success && textOf(cleared.data)).toBe("");
+    expect(kept.success && textOf(kept.data)).toBe("hello");
+    expect(await store.clear("never-stored")).toEqual({ success: true, data: undefined });
+    await store.close();
+  });
+
   it("creates missing parent directories", async () => {
     const store = await open(join(dir.path, "nested", "db"));
     expect((await store.load("r")).success).toBe(true);
@@ -91,6 +108,7 @@ describe("LevelDB document store", () => {
     // y-leveldb swallows transaction errors and resolves with null.
     vi.spyOn(LeveldbPersistence.prototype, "storeUpdate").mockResolvedValue(null);
     vi.spyOn(LeveldbPersistence.prototype, "getYDoc").mockResolvedValue(null);
+    vi.spyOn(LeveldbPersistence.prototype, "clearDocument").mockResolvedValue(null);
     const store = await open();
 
     expect(await store.append("room-1", new Uint8Array([0, 0]))).toEqual({
@@ -100,6 +118,10 @@ describe("LevelDB document store", () => {
     expect(await store.load("room-1")).toEqual({
       success: false,
       error: "could not load room room-1",
+    });
+    expect(await store.clear("room-1")).toEqual({
+      success: false,
+      error: "could not clear room room-1",
     });
     vi.restoreAllMocks();
     await store.close();

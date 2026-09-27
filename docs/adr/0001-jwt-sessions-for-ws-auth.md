@@ -1,6 +1,6 @@
 # 0001. Use Auth.js JWT sessions so the WS server can authenticate without the database
 
-- **Status:** Accepted (amended 2026-09-26 and 2026-09-27, see addenda)
+- **Status:** Accepted (amended 2026-09-26 and 2026-09-27, see addenda; latest #48)
 - **Date:** 2026-09-26
 
 ## Context
@@ -66,8 +66,8 @@ connection indefinitely.
 - Pushing revocations (immediate removal) would need a web-app → WS-server channel; it can be revisited
   if a 5-minute window becomes too long.
 - Deleting a room (#35) is revoked the same way: its members are refused the next ticket, so open
-  sockets lose the room within one ticket lifetime. The document stays in LevelDB until the purge in #48,
-  which is that web-app → WS-server channel.
+  sockets lose the room within one ticket lifetime. Since #48 (addendum below) the web app also purges the
+  room on the WS server, which closes its sockets at once and removes its document.
 - A ticket fetch that throws (a transient failure) is retried with backoff; only a refusal keeps the
   connection down, so a removed member is still never retried into the room (#27).
 
@@ -127,3 +127,45 @@ shared one upgrade bucket (30 burst, 1/s) and one busy network could lock everyo
 - A proxy that appends `host:port` entries falls back to the proxy bucket; revisit if the deployment
   platform does this.
 - RFC 7239 `Forwarded` and `X-Real-IP` are not read.
+
+## Addendum (2026-09-27, #48): the web app purges a deleted room's document
+
+Deleting a room removed its rows, but its Yjs document stayed in LevelDB forever: the web app can't reach
+LevelDB and the WS server never reads Postgres. This is the first web app → WS server call.
+
+**Decision.**
+- **Purge ticket.** After a delete the web app signs an HS256 purge ticket with `WS_TICKET_SECRET`:
+  audience `collab-editor:ws-admin`, claims `{ sub, roomId, iat, exp }`, lifetime ≤ 60 s
+  (`PURGE_TICKET_*` in `@collab-editor/shared`). Each verifier checks its own audience, so a room ticket is
+  refused as a purge ticket and a purge ticket is refused on upgrade.
+- **`DELETE /rooms/<id>`** on the WS server's HTTP port, ticket in `Authorization: Bearer` (never the URL).
+  It takes a token from the per-IP upgrade bucket before any HMAC work (429), then needs a purge ticket for
+  exactly that room (401). It answers 204, 500 when the store can't clear (so the web app retries) and 503
+  during shutdown. It is idempotent: an unknown or already purged room answers 204.
+- **Purge order.** The room's upgrades are refused first, then every socket closes with
+  `4003 room deleted` (`ROOM_DELETED_CLOSE_CODE`; presence drops at once, #28), the room is evicted, waiting
+  for its pending writes, its presence-id bindings are dropped, and only then is the document cleared
+  (y-leveldb `clearDocument`). No write lands after the clear. This is a deliberate exception to
+  Invariant 4 for a deleted room only. Clients do not reconnect after 4003 and show "This room was deleted".
+- **Tombstone.** For `ROOM_TICKET_TTL_SECONDS + 60` s after a purge, upgrades for the room get 401 even
+  with a valid room ticket, so a ticket issued just before the delete can't recreate the document. The
+  tombstone lives in memory: a WS server restart within those 6 minutes forgets it, and a client that was
+  reconnecting with a still-valid ticket could then write a new orphan document. The window is narrow and
+  the result is the orphan #35 already accepted. The tombstone runs on the WS server's clock and a room
+  ticket's `exp` on the web app's, so the minute of margin also assumes the two clocks agree to within a
+  minute (NTP).
+- **Outbox.** `deleteOwnedRoom` writes a `RoomPurge` row in the delete's transaction, so a crash can't
+  lose a purge. `deleteRoom` sweeps due rows after its response (`after()`), and dashboard loads
+  (`listRooms`) sweep at most once a minute per process. A failure keeps the row with `attempts`,
+  `lastError` and a backoff of 1 min doubling to 1 h; rows are never dropped. `deleteRoom`'s answer never
+  depends on the purge.
+- **Addressing.** The web app calls `WS_SERVER_URL` if set (for a private address), else
+  `NEXT_PUBLIC_WS_URL` with `ws:` → `http:` and `wss:` → `https:`.
+
+**Alternatives rejected.**
+- A periodic sweep in the WS server: it would need Postgres.
+- A separate admin port: one more port to deploy and firewall, while the ticket and rate limit already
+  guard the route.
+- Vercel Cron or a timer in `instrumentation.ts`: no deployment target is chosen yet (#37/#38); revisit
+  then.
+- Sweeping in `getRoomTicket`: a database read on the hot reconnect path.

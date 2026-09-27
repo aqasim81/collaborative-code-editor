@@ -15,6 +15,13 @@ const envSchema = z.object({
   AUTH_URL: z.string().url().optional(),
   // Signs the short-lived room tickets the WS server verifies; must match the WS server's value.
   WS_TICKET_SECRET: z.string().min(32, "must be at least 32 characters (openssl rand -hex 32)"),
+  // The WS server's base URL for server-to-server calls (room purges, #48), when the web app reaches it
+  // on another address than browsers do. Unset: derived from NEXT_PUBLIC_WS_URL.
+  WS_SERVER_URL: z
+    .string()
+    .url()
+    .refine((value) => /^(http|ws)s?:\/\//.test(value), "must be an http(s):// or ws(s):// URL")
+    .optional(),
   NEXT_PUBLIC_WS_URL: z
     .string()
     .url()
@@ -41,6 +48,14 @@ export function parseEnv(source: Record<string, string | undefined>): EnvResult 
   }
   const issues = result.error.issues.map((issue) => `  ${issue.path.join(".")}: ${issue.message}`);
   return { success: false, error: `Invalid environment variables:\n${issues.join("\n")}` };
+}
+
+/**
+ * The WS server's HTTP base URL for server-to-server calls: `WS_SERVER_URL` if set, else
+ * `NEXT_PUBLIC_WS_URL`, with `ws:` mapped to `http:` and `wss:` to `https:`.
+ */
+export function wsServerHttpUrl(source: Pick<Env, "WS_SERVER_URL" | "NEXT_PUBLIC_WS_URL">): string {
+  return (source.WS_SERVER_URL ?? source.NEXT_PUBLIC_WS_URL).replace(/^ws/, "http");
 }
 
 function loadEnv(): Env {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { verifyRoomTicket } from "../../src/auth/ticket";
-import { signTicket, TEST_SECRET } from "../helpers/tickets";
+import { verifyPurgeTicket, verifyRoomTicket } from "../../src/auth/ticket";
+import { signPurgeTicket, signTicket, TEST_SECRET } from "../helpers/tickets";
 
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -80,7 +80,60 @@ describe("verifyRoomTicket (Invariants 1 and 2)", () => {
     expect((await verifyRoomTicket(token, "room-1", TEST_SECRET)).success).toBe(false);
   });
 
+  it("rejects a purge ticket", async () => {
+    const token = await signPurgeTicket();
+
+    expect((await verifyRoomTicket(token, "room-1", TEST_SECRET)).success).toBe(false);
+  });
+
   it("rejects garbage", async () => {
     expect((await verifyRoomTicket("not-a-jwt", "room-1", TEST_SECRET)).success).toBe(false);
+  });
+});
+
+describe("verifyPurgeTicket (Invariants 1 and 2)", () => {
+  it("accepts a valid purge ticket for the room", async () => {
+    const result = await verifyPurgeTicket(await signPurgeTicket(), "room-1", TEST_SECRET);
+
+    expect(result).toMatchObject({ success: true, data: { sub: "user-1", roomId: "room-1" } });
+  });
+
+  it("rejects a room ticket", async () => {
+    const token = await signTicket();
+
+    expect((await verifyPurgeTicket(token, "room-1", TEST_SECRET)).success).toBe(false);
+  });
+
+  it("rejects a purge ticket for another room", async () => {
+    const result = await verifyPurgeTicket(await signPurgeTicket(), "room-2", TEST_SECRET);
+
+    expect(result).toEqual({ success: false, error: "ticket is for another room" });
+  });
+
+  it("rejects an expired purge ticket", async () => {
+    const token = await signPurgeTicket({ iat: now() - 120, exp: now() - 60 });
+
+    expect((await verifyPurgeTicket(token, "room-1", TEST_SECRET)).success).toBe(false);
+  });
+
+  it("rejects a purge ticket that lives longer than 60 s", async () => {
+    const token = await signPurgeTicket({ exp: now() + 300 });
+
+    expect(await verifyPurgeTicket(token, "room-1", TEST_SECRET)).toEqual({
+      success: false,
+      error: "ticket lifetime too long",
+    });
+  });
+
+  it("rejects a purge ticket signed with another secret", async () => {
+    const token = await signPurgeTicket({ secret: "x".repeat(32) });
+
+    expect((await verifyPurgeTicket(token, "room-1", TEST_SECRET)).success).toBe(false);
+  });
+
+  it("rejects an algorithm other than HS256", async () => {
+    const token = await signPurgeTicket({ alg: "HS512" });
+
+    expect((await verifyPurgeTicket(token, "room-1", TEST_SECRET)).success).toBe(false);
   });
 });

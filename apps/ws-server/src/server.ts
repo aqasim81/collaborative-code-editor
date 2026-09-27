@@ -3,7 +3,9 @@ import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 import {
   presenceUser,
+  ROOM_DELETED_CLOSE_CODE,
   ROOM_PROTOCOL,
+  ROOM_PURGE_PATH_PREFIX,
   ROOM_TICKET_TTL_SECONDS,
   type RoomTicketClaims,
   type ServerMessage,
@@ -11,7 +13,7 @@ import {
   TICKET_PROTOCOL_PREFIX,
 } from "@collab-editor/shared";
 import { WebSocket, WebSocketServer } from "ws";
-import { verifyRoomTicket } from "./auth/ticket";
+import { verifyPurgeTicket, verifyRoomTicket } from "./auth/ticket";
 import { clientAddress, NO_TRUSTED_PROXIES, type TrustedProxies } from "./client-address";
 import { parseClientMessage } from "./handlers/messages";
 import type { Logger } from "./logger";
@@ -81,6 +83,8 @@ export interface RunningServer {
 
 // Room ids are cuids today; allow the URL-safe alphabet and nothing that needs decoding.
 const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+// A room ticket issued just before a purge stays valid for one ticket lifetime; refuse its room until then.
+const PURGED_ROOM_REFUSAL_MS = (ROOM_TICKET_TTL_SECONDS + 60) * 1000;
 const DEFAULT_CLOSE_TIMEOUT_MS = 5_000;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 
@@ -107,6 +111,29 @@ function parseUpgrade(req: IncomingMessage): { roomId: string; ticket: string } 
     return null;
   }
   return { roomId, ticket };
+}
+
+/** The room id of a `/rooms/<id>` path, or null. */
+function purgeTarget(pathname: string | undefined): string | null {
+  const roomId = pathname?.startsWith(ROOM_PURGE_PATH_PREFIX)
+    ? pathname.slice(ROOM_PURGE_PATH_PREFIX.length)
+    : undefined;
+  return roomId !== undefined && ROOM_ID_PATTERN.test(roomId) ? roomId : null;
+}
+
+/** The token of an `Authorization: Bearer <token>` header, or null. */
+function bearerToken(header: string | undefined): string | null {
+  return /^Bearer (\S+)$/i.exec(header ?? "")?.[1] ?? null;
+}
+
+function respond(res: ServerResponse, status: number, body?: object): void {
+  if (body === undefined) {
+    res.writeHead(status);
+    res.end();
+    return;
+  }
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(body));
 }
 
 const STATUS_TEXT = { 401: "Unauthorized", 429: "Too Many Requests", 503: "Service Unavailable" };
@@ -180,6 +207,8 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
   let closing = false;
   // Each open socket's `closeConnection`, so shutdown closes it the same way.
   const closers = new Map<WebSocket, (code: number, reason: string) => void>();
+  // Purged room id → when upgrades for it are accepted again.
+  const purgedRooms = new Map<string, number>();
 
   const stats = (): HealthStats => ({
     status: "ok",
@@ -187,11 +216,89 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     connections: rooms.connectionCount(),
   });
 
+  const isPurged = (roomId: string): boolean => (purgedRooms.get(roomId) ?? 0) > Date.now();
+
+  // The socket's own address, unless the peer is a trusted proxy: then the rightmost X-Forwarded-For hop
+  // that is not itself a trusted proxy (the rest is client-controlled).
+  const rateLimitKey = (req: IncomingMessage): string =>
+    upgradeRateLimitKey(
+      clientAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"], trustedProxies),
+    );
+
   const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
-    const found = req.method === "GET" && parseRequestUrl(req.url)?.pathname === "/health";
-    res.writeHead(found ? 200 : 404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(found ? stats() : { error: "not found" }));
+    const pathname = parseRequestUrl(req.url)?.pathname;
+    const purgeRoomId = req.method === "DELETE" ? purgeTarget(pathname) : null;
+    if (purgeRoomId !== null) {
+      void handlePurge(req, res, purgeRoomId);
+      return;
+    }
+    const found = req.method === "GET" && pathname === "/health";
+    respond(res, found ? 200 : 404, found ? stats() : { error: "not found" });
   });
+
+  /**
+   * `DELETE /rooms/<id>`: the web app deleted the room and asks for its document to go (Invariants 1
+   * and 2). Guarded like an upgrade: the per-IP bucket first, then a purge ticket for exactly this room.
+   * Idempotent, so the web app can retry until it gets a 204.
+   */
+  async function handlePurge(req: IncomingMessage, res: ServerResponse, roomId: string) {
+    if (closing) {
+      respond(res, 503, { error: "shutting down" });
+      return;
+    }
+    const ip = rateLimitKey(req);
+    if (!upgradeLimiter.tryConsume(ip)) {
+      logger.info({ ip }, "purge rejected: rate limit exceeded");
+      respond(res, 429, { error: "too many requests" });
+      return;
+    }
+    const token = bearerToken(req.headers.authorization);
+    if (!token) {
+      logger.info({ roomId }, "purge rejected: missing bearer token");
+      respond(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const verified = await verifyPurgeTicket(token, roomId, ticketSecret);
+    if (!verified.success) {
+      logger.info({ roomId, reason: verified.error }, "purge rejected");
+      respond(res, 401, { error: "unauthorized" });
+      return;
+    }
+    // Shutdown may have started while the ticket was being verified; the store may be closed.
+    if (closing) {
+      respond(res, 503, { error: "shutting down" });
+      return;
+    }
+    const purged = await purgeRoom(roomId);
+    if (!purged.success) {
+      logger.error({ roomId, reason: purged.error }, "room purge failed");
+      respond(res, 500, { error: "purge failed" });
+      return;
+    }
+    logger.info({ roomId, userId: verified.data.sub }, "room purged");
+    respond(res, 204);
+  }
+
+  /**
+   * Refuses the room's upgrades first, so no one rejoins mid-purge, then closes its sockets (dropping
+   * their presence), waits for the room's pending writes and only then clears its document: no write
+   * lands after the clear and brings part of the document back.
+   */
+  async function purgeRoom(roomId: string): Promise<Result<void>> {
+    const now = Date.now();
+    for (const [id, until] of purgedRooms) {
+      if (until <= now) {
+        purgedRooms.delete(id);
+      }
+    }
+    purgedRooms.set(roomId, now + PURGED_ROOM_REFUSAL_MS);
+    for (const peer of [...(rooms.get(roomId)?.clients ?? [])]) {
+      peer.close(ROOM_DELETED_CLOSE_CODE, "room deleted");
+    }
+    await rooms.evict(roomId);
+    presenceIds.delete(roomId);
+    return store.clear(roomId);
+  }
 
   function onConnection(ws: WebSocket, claims: RoomTicketClaims): void {
     const { roomId, sub: userId } = claims;
@@ -310,11 +417,8 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
       rejectUpgrade(socket, 503);
       return;
     }
-    // Before any parsing or HMAC work. The socket's own address, unless the peer is a trusted proxy: then
-    // the rightmost X-Forwarded-For hop that is not itself a trusted proxy (the rest is client-controlled).
-    const ip = upgradeRateLimitKey(
-      clientAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"], trustedProxies),
-    );
+    // Before any parsing or HMAC work.
+    const ip = rateLimitKey(req);
     if (!upgradeLimiter.tryConsume(ip)) {
       logger.info({ ip }, "upgrade rejected: rate limit exceeded");
       rejectUpgrade(socket, 429);
@@ -329,6 +433,12 @@ export async function startServer(options: ServerOptions): Promise<Result<Runnin
     void verifyRoomTicket(target.ticket, target.roomId, ticketSecret).then((verified) => {
       if (!verified.success) {
         logger.info({ roomId: target.roomId, reason: verified.error }, "upgrade rejected");
+        rejectUpgrade(socket, 401);
+        return;
+      }
+      // Checked after the await, in the same tick as the join, so a purge can't slip in between.
+      if (isPurged(target.roomId)) {
+        logger.info({ roomId: target.roomId }, "upgrade rejected: room deleted");
         rejectUpgrade(socket, 401);
         return;
       }

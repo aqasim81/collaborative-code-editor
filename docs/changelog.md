@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Purge a deleted room's document (#48)
+- Deleting a room closes its open sockets at once with the new close code `4003`; clients stop reconnecting and show "Could not join this room: This room was deleted"
+- The WS server removes the room's LevelDB document through a new `DELETE /rooms/<id>` route, guarded by the per-IP upgrade limit and a 60 s purge ticket (audience `collab-editor:ws-admin`, bearer header); a room ticket can't be used as a purge ticket, nor the reverse; the route is idempotent
+- Pending writes finish before the document is cleared, and the room refuses upgrades for one ticket lifetime plus a minute, so a ticket issued before the delete can't bring the document back
+- The web app queues each purge in a new `RoomPurge` table in the delete's transaction and runs it after the response; a failure is retried with backoff (1 min doubling to 1 h) after the next delete or dashboard load (at most once a minute). The delete's answer never depends on it
+- New optional web setting `WS_SERVER_URL` for reaching the WS server on a private address; by default it is derived from `NEXT_PUBLIC_WS_URL`
+- New migration `room_purge_outbox`: run `db:deploy` when deploying
+- Decision recorded as an ADR 0001 addendum
+- Tests: purge ticket signing and verification both ways, the purge route end to end (close codes, store cleared, rejoin refused, 401/404/429/500/503, clear after pending writes), `DocumentStore.clear` on LevelDB, `evict` settling, the transactional outbox write, the sweep's backoff and throttle, and the client's 4003 handling
+
 ### `.env.example` in sync with the env schemas (#47)
 - `.env.example` now lists `WS_TRUSTED_PROXIES` (empty = trust no proxy) and `WS_PERSISTENCE_DIR` (`.leveldb`)
 - A test in each app fails, naming the variable, if a key of that app's env schema (except `NODE_ENV`) is missing from `.env.example`; both schemas export `ENV_KEYS`

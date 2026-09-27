@@ -14,6 +14,7 @@ const SERVER_ONLY_MODULES = new Set([
   "lib/auth.ts",
   "lib/auth.config.ts",
   "lib/prisma.ts",
+  "lib/room-purge.ts",
   "lib/rooms.ts",
   "lib/ws-ticket.ts",
 ]);

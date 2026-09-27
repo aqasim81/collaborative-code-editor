@@ -4,10 +4,16 @@ export { PRESENCE_COLORS, type PresenceUser, presenceUser, userColor } from "./p
 export type { RoomInfo } from "./room";
 export {
   PRESENCE_ID_TAKEN_CLOSE_CODE,
+  PURGE_TICKET_AUDIENCE,
+  PURGE_TICKET_TTL_SECONDS,
+  type PurgeTicketClaims,
+  ROOM_DELETED_CLOSE_CODE,
   ROOM_PROTOCOL,
+  ROOM_PURGE_PATH_PREFIX,
   ROOM_TICKET_AUDIENCE,
   ROOM_TICKET_TTL_SECONDS,
   type RoomTicketClaims,
+  roomPurgePath,
   roomTicketProtocols,
   TICKET_EXPIRED_CLOSE_CODE,
   TICKET_PROTOCOL_PREFIX,

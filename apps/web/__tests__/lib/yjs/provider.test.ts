@@ -1,5 +1,6 @@
 import {
   PRESENCE_ID_TAKEN_CLOSE_CODE,
+  ROOM_DELETED_CLOSE_CODE,
   roomTicketProtocols,
   TICKET_EXPIRED_CLOSE_CODE,
 } from "@collab-editor/shared";
@@ -11,6 +12,7 @@ import {
   type ConnectionStatus,
   type ConnectRoomOptions,
   connectRoom,
+  ROOM_DELETED_MESSAGE,
   type RoomConnection,
   TICKET_FAILURES_BEFORE_RELOAD_HINT,
   TICKET_RETRY_BASE_MS,
@@ -586,6 +588,36 @@ describe("connectRoom", () => {
     await vi.waitFor(() => expect(onError).toHaveBeenCalledWith("Room not found"));
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it("stays down when the server closes because the room was deleted (#48)", async () => {
+    const onError = vi.fn();
+    // A ticket about to expire would otherwise be refreshed on any close.
+    const fetchTicket = vi.fn(async () => ok("t1", NOW + 10));
+    connect(fetchTicket, { onError });
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    socket(0).serverOpen();
+
+    socket(0).serverClose(ROOM_DELETED_CLOSE_CODE);
+
+    expect(onError).toHaveBeenCalledExactlyOnceWith(ROOM_DELETED_MESSAGE);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(fetchTicket).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports nothing for a room-deleted close after destroy (#48)", async () => {
+    const onError = vi.fn();
+    const room = connect(async () => ok("t1", NOW + 300), { onError });
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    socket(0).serverOpen();
+    const { provider } = room;
+
+    room.destroy();
+    connection = null;
+    provider.emit("connection-close", [{ code: ROOM_DELETED_CLOSE_CODE } as CloseEvent, provider]);
+
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("stops everything on destroy, including a ticket that arrives later", async () => {

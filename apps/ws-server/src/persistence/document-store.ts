@@ -10,6 +10,8 @@ export interface DocumentStore {
   load(roomId: string): Promise<Result<Uint8Array>>;
   /** Appends one update. Resolves only once it is written. */
   append(roomId: string, update: Uint8Array): Promise<Result<void>>;
+  /** Deletes every stored update of the room; a room never stored clears successfully. */
+  clear(roomId: string): Promise<Result<void>>;
   /** Waits for pending writes, then releases the database. */
   close(): Promise<void>;
 }
@@ -56,6 +58,12 @@ export async function openLevelDbStore(location: string): Promise<Result<Documen
         const clock = await persistence.storeUpdate(roomId, update);
         if (typeof clock !== "number") {
           return { success: false, error: `could not store an update for room ${roomId}` };
+        }
+        return { success: true, data: undefined };
+      },
+      async clear(roomId) {
+        if ((await persistence.clearDocument(roomId)) === null) {
+          return { success: false, error: `could not clear room ${roomId}` };
         }
         return { success: true, data: undefined };
       },

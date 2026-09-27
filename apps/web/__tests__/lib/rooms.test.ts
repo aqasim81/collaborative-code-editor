@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const prismaMock = vi.hoisted(() => ({
   room: { findFirst: vi.fn(), create: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() },
   roomMember: { findUnique: vi.fn(), findMany: vi.fn() },
+  roomPurge: { create: vi.fn() },
+  $transaction: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
@@ -21,6 +23,10 @@ const room = { id: "r1", name: "Room", language: "go", creatorId: "u1" };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Run interactive transactions against the same mock client.
+  prismaMock.$transaction.mockImplementation((run: (tx: typeof prismaMock) => unknown) =>
+    run(prismaMock),
+  );
 });
 
 describe("findRoomForMember (Invariant 2)", () => {
@@ -127,10 +133,21 @@ describe("deleteOwnedRoom", () => {
     });
   });
 
-  it("returns 0 when nothing matched", async () => {
+  it("queues the room's document purge in the same transaction (#48)", async () => {
+    prismaMock.room.deleteMany.mockResolvedValueOnce({ count: 1 });
+
+    await deleteOwnedRoom("r1", "u1");
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(prismaMock.roomPurge.create).toHaveBeenCalledWith({
+      data: { roomId: "r1", userId: "u1" },
+    });
+  });
+
+  it("returns 0 and queues nothing when nothing matched", async () => {
     prismaMock.room.deleteMany.mockResolvedValueOnce({ count: 0 });
 
     await expect(deleteOwnedRoom("r1", "u2")).resolves.toBe(0);
+    expect(prismaMock.roomPurge.create).not.toHaveBeenCalled();
   });
 });
 

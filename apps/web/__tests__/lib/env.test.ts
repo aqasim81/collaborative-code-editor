@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseEnv } from "@/lib/env";
+import { parseEnv, wsServerHttpUrl } from "@/lib/env";
 
 const validEnv = {
   DATABASE_URL: "postgresql://collab:collab@localhost:5434/collab_editor",
@@ -97,5 +97,42 @@ describe("env", () => {
     vi.resetModules();
     const { env } = await import("@/lib/env");
     expect(env.NEXT_PUBLIC_WS_URL).toBe("ws://localhost:8080");
+  });
+});
+
+describe("WS_SERVER_URL (#48)", () => {
+  it("is optional and accepts http(s) and ws(s) URLs", () => {
+    for (const url of [
+      "http://ws:8080",
+      "https://ws.example.com",
+      "ws://ws:8080",
+      "wss://ws.example.com",
+    ]) {
+      expect(parseEnv({ ...validEnv, WS_SERVER_URL: url })).toMatchObject({
+        success: true,
+        data: { WS_SERVER_URL: url },
+      });
+    }
+    expect(parseEnv({ ...validEnv, WS_SERVER_URL: "" })).toMatchObject({ success: true });
+  });
+
+  it("refuses another scheme", () => {
+    expectError({ ...validEnv, WS_SERVER_URL: "ftp://ws:8080" }, "WS_SERVER_URL");
+  });
+});
+
+describe("wsServerHttpUrl", () => {
+  it.each([
+    [undefined, "ws://localhost:8080", "http://localhost:8080"],
+    [undefined, "wss://ws.example.com", "https://ws.example.com"],
+    ["http://ws-internal:8080", "wss://ws.example.com", "http://ws-internal:8080"],
+    ["wss://ws-internal", "ws://localhost:8080", "https://ws-internal"],
+  ])("WS_SERVER_URL %s, NEXT_PUBLIC_WS_URL %s → %s", (explicit, publicUrl, expected) => {
+    expect(
+      wsServerHttpUrl({
+        ...(explicit === undefined ? {} : { WS_SERVER_URL: explicit }),
+        NEXT_PUBLIC_WS_URL: publicUrl,
+      }),
+    ).toBe(expected);
   });
 });

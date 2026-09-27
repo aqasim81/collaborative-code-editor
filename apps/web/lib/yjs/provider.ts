@@ -1,6 +1,7 @@
 import {
   PRESENCE_ID_TAKEN_CLOSE_CODE,
   presenceUser,
+  ROOM_DELETED_CLOSE_CODE,
   roomTicketProtocols,
   type SessionUser,
   SHARED_TEXT_NAME,
@@ -59,6 +60,9 @@ export function ticketRetryDelayMs(attempt: number, random: () => number = Math.
   return backoff * (0.5 + random() / 2);
 }
 
+/** Shown when the WS server closes the room because it was deleted (#48). */
+export const ROOM_DELETED_MESSAGE = "This room was deleted";
+
 export interface ConnectRoomOptions {
   serverUrl: string;
   roomId: string;
@@ -66,7 +70,7 @@ export interface ConnectRoomOptions {
   user: SessionUser;
   fetchTicket: (roomId: string) => Promise<RoomTicketResult>;
   onStatus?: (status: ConnectionStatus) => void;
-  /** Called when the ticket is refused; the connection then stays down. */
+  /** Called when the ticket is refused or the room was deleted; the connection then stays down. */
   onError?: (message: string) => void;
   /** Called with `true` once ticket fetches have kept throwing for a while, and with `false` once one returns. */
   onReloadHint?: (show: boolean) => void;
@@ -94,6 +98,7 @@ export interface RoomConnection {
  * A ticket fetch that throws (network drop, redeploy, database down) is retried with backoff until it
  * succeeds or the room is left; a refused ticket is reported through `onError` and never retried.
  * After a long run of thrown fetches `onReloadHint` suggests a reload; retrying goes on meanwhile.
+ * A close because the room was deleted ends it for good: no reconnect, no ticket fetch, one `onError`.
  */
 export function connectRoom({
   serverUrl,
@@ -188,6 +193,15 @@ export function connectRoom({
   }
 
   provider.on("connection-close", (event: CloseEvent | null) => {
+    if (event?.code === ROOM_DELETED_CLOSE_CODE) {
+      // Before y-websocket's own reconnect, which checks `shouldConnect` right after this event. A socket
+      // was open, so no ticket fetch or retry is pending, and none will start.
+      provider.shouldConnect = false;
+      if (!destroyed) {
+        onError?.(ROOM_DELETED_MESSAGE);
+      }
+      return;
+    }
     if (event?.code === PRESENCE_ID_TAKEN_CLOSE_CODE) {
       // Before y-websocket's own reconnect, which announces whatever id the client has then.
       takeNewClientId();

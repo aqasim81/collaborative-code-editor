@@ -89,3 +89,16 @@ model RoomMember {
   @@id([roomId, userId])
   @@index([userId])
 }
+
+// Rooms whose WS-server document still has to be purged (#48). Written in the room delete's
+// transaction; no relation, because the room is already gone.
+model RoomPurge {
+  roomId        String   @id
+  userId        String
+  createdAt     DateTime @default(now())
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  lastError     String?
+
+  @@index([nextAttemptAt])
+}

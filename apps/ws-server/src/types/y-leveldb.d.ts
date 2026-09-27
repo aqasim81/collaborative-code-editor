@@ -14,6 +14,8 @@ declare module "y-leveldb" {
     getYDoc(docName: string): Promise<Doc | null>;
     /** Resolves with the update's clock, or null when the transaction fails. */
     storeUpdate(docName: string, update: Uint8Array): Promise<number | null>;
+    /** Deletes every update of the document; resolves with null when the transaction fails. */
+    clearDocument(docName: string): Promise<undefined | null>;
     destroy(): Promise<void>;
   }
 }

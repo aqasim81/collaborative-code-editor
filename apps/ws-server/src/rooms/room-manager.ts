@@ -13,8 +13,11 @@ export interface RoomManager<C, S> {
   /** Removes a client; an empty room is destroyed after the grace period. */
   leave(roomId: string, client: C): void;
   get(roomId: string): Room<C, S> | undefined;
-  /** Destroys a room now, whoever is still in it; the next join starts a fresh one. */
-  evict(roomId: string): void;
+  /**
+   * Destroys a room now, whoever is still in it; the next join starts a fresh one. Settles once the
+   * room's state is destroyed (including a destroy already under way), or at once when there is none.
+   */
+  evict(roomId: string): Promise<void>;
   roomCount(): number;
   connectionCount(): number;
   /** Every connected client across all rooms. */
@@ -53,7 +56,7 @@ export function createRoomManager<C, S>({
     }
   }
 
-  function destroy(room: Room<C, S>): void {
+  function destroy(room: Room<C, S>): Promise<void> {
     cancelDestroy(room.id);
     rooms.delete(room.id);
     const done: Promise<void> = destroyState(room.state).then(() => {
@@ -63,6 +66,7 @@ export function createRoomManager<C, S>({
     });
     destroying.set(room.id, done);
     logger.info({ roomId: room.id }, "room destroyed");
+    return done;
   }
 
   function scheduleDestroy(roomId: string): void {
@@ -104,9 +108,7 @@ export function createRoomManager<C, S>({
     get: (roomId) => rooms.get(roomId),
     evict(roomId) {
       const room = rooms.get(roomId);
-      if (room) {
-        destroy(room);
-      }
+      return room ? destroy(room) : (destroying.get(roomId) ?? Promise.resolve());
     },
     roomCount: () => rooms.size,
     connectionCount: () => {

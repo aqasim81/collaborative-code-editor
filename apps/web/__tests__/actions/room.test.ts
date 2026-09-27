@@ -7,10 +7,18 @@ const mocks = vi.hoisted(() => ({
   listRoomsForMember: vi.fn(),
   findMemberRole: vi.fn(),
   deleteOwnedRoom: vi.fn(),
+  after: vi.fn(),
+  sweepRoomPurges: vi.fn(),
+  maybeSweepRoomPurges: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: mocks.auth }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
+vi.mock("next/server", () => ({ after: mocks.after }));
+vi.mock("@/lib/room-purge", () => ({
+  sweepRoomPurges: mocks.sweepRoomPurges,
+  maybeSweepRoomPurges: mocks.maybeSweepRoomPurges,
+}));
 vi.mock("@/lib/rooms", () => ({
   createRoomWithOwner: mocks.createRoomWithOwner,
   listRoomsForMember: mocks.listRoomsForMember,
@@ -84,11 +92,21 @@ describe("listRooms (Invariant 2)", () => {
     expect(mocks.listRoomsForMember).toHaveBeenCalledWith("u1");
   });
 
+  it("retries due room purges after the response, throttled (#48)", async () => {
+    mocks.listRoomsForMember.mockResolvedValue([]);
+
+    await listRooms();
+    expect(mocks.after).toHaveBeenCalledTimes(1);
+    await mocks.after.mock.calls[0]?.[0]();
+    expect(mocks.maybeSweepRoomPurges).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses a signed-out visitor", async () => {
     mocks.auth.mockResolvedValue(null);
 
     await expect(listRooms()).resolves.toEqual({ success: false, error: "Not signed in" });
     expect(mocks.listRoomsForMember).not.toHaveBeenCalled();
+    expect(mocks.after).not.toHaveBeenCalled();
   });
 
   it("turns a database error into a generic message", async () => {
@@ -111,6 +129,17 @@ describe("deleteRoom (Invariant 2)", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/dashboard");
   });
 
+  it("purges the room's document after the response, whatever the purge does (#48)", async () => {
+    mocks.deleteOwnedRoom.mockResolvedValue(1);
+    mocks.sweepRoomPurges.mockRejectedValue(new Error("WS server down"));
+
+    await expect(deleteRoom("r1")).resolves.toEqual({ success: true, data: { id: "r1" } });
+    expect(mocks.after).toHaveBeenCalledTimes(1);
+    expect(mocks.sweepRoomPurges).not.toHaveBeenCalled();
+    await expect(mocks.after.mock.calls[0]?.[0]()).rejects.toThrow("WS server down");
+    expect(mocks.sweepRoomPurges).toHaveBeenCalledTimes(1);
+  });
+
   it("tells an editor that only the owner can delete (the scoped delete removed nothing)", async () => {
     mocks.deleteOwnedRoom.mockResolvedValue(0);
     mocks.findMemberRole.mockResolvedValue("EDITOR");
@@ -121,6 +150,7 @@ describe("deleteRoom (Invariant 2)", () => {
     });
     expect(mocks.findMemberRole).toHaveBeenCalledWith("r1", "u1");
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.after).not.toHaveBeenCalled();
   });
 
   it("answers a non-member, a missing room and a lost race as not found", async () => {
