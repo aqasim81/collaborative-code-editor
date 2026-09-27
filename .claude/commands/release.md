@@ -24,6 +24,11 @@ If `docs/` or `CLAUDE.md` does not exist, tell the user: "Project not initialize
 
 ## 2. Determine Release Type (PAUSE FOR USER)
 
+Release from an up-to-date `main`, so the version reflects everything merged:
+```bash
+git switch main && git pull --tags
+```
+
 ### Check current version:
 ```bash
 git tag --sort=-v:refname | head -5
@@ -62,6 +67,12 @@ ASK: "Confirm the version for this release (suggested: v{X.Y.Z}), or specify a d
 
 ## 3. Pre-Release Validation
 
+`main` is protected (PRs only, required checks, admins included), so the release is made on a branch cut from the
+`main` pulled in §2:
+```bash
+git switch -c chore/release-vX.Y.Z
+```
+
 Run the project's FULL validation suite:
 ```bash
 {full validate command from CLAUDE.md}
@@ -79,9 +90,18 @@ Report:
 
 ## 4. Update Changelog
 
-Update `docs/changelog.md` — move `[Unreleased]` to a versioned section:
+Update `docs/changelog.md` — move `[Unreleased]` to a versioned section, and leave a fresh, empty `[Unreleased]` above
+it:
 
 ```markdown
+## [Unreleased]
+
+### Added
+
+### Fixed
+
+### Changed
+
 ## [vX.Y.Z] — YYYY-MM-DD
 
 ### Added
@@ -126,12 +146,31 @@ No file to update — version is the git tag itself. Skip this step.
 
 ---
 
-## 6. Create Git Tag and GitHub Release
+## 6. Merge the Release PR, Tag, and Create the GitHub Release
 
-### Tag the release:
+### Open the release PR:
+Write the PR body from `.github/PULL_REQUEST_TEMPLATE.md` (the vX.Y.Z changelog section under "What changed"), then:
 ```bash
-git push origin main
-git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push -u origin chore/release-vX.Y.Z
+gh pr create --title "chore(release): vX.Y.Z" --body-file {body file}
+```
+
+### Merge it once the required checks pass:
+```bash
+gh pr checks {PR} --watch
+gh pr merge {PR} --squash --delete-branch
+```
+If the merge is refused because the branch is behind `main` (strict protection: something merged while the checks
+ran), run `gh pr update-branch {PR}`, watch the checks again, then merge. Never bypass the protection.
+
+### Tag the merge commit on `main`:
+Tag the release PR's squash-merge commit: not the branch commit (it is not on `main`), and not `main`'s tip (another
+PR may have merged since). Only the tag is pushed.
+```bash
+git switch main && git pull
+sha=$(gh pr view {PR} --json mergeCommit -q .mergeCommit.oid)
+git log -1 --oneline "$sha"   # the "chore(release): vX.Y.Z" merge commit
+git tag -a vX.Y.Z "$sha" -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
@@ -163,7 +202,7 @@ EOF
 Deployment steps vary by platform:
 
 **Vercel (most Next.js projects):**
-- Push to main triggers auto-deploy
+- Merging the release PR into main triggers auto-deploy
 - Check the deployment dashboard or use `vercel` CLI
 
 **Railway:**
@@ -215,6 +254,12 @@ Is production confirmed healthy?"
 
 ## 9. Post-Release Updates
 
+These record the deploy result, known only after §8, so they go through a second, docs-only PR. Cut its branch first:
+```bash
+git switch main && git pull
+git switch -c chore/post-release-vX.Y.Z
+```
+
 ### 9a. Update docs/status.md
 ```markdown
 ## Latest Release
@@ -230,24 +275,13 @@ If the release corresponds to a project milestone, update the Status section.
 gh issue close {number} --comment "Released in vX.Y.Z"
 ```
 
-### 9d. Reset Changelog
-Add a new `[Unreleased]` section at the top of `docs/changelog.md`:
-```markdown
-## [Unreleased]
-
-### Added
-
-### Fixed
-
-### Changed
-```
-
-### 9e. Commit post-release updates:
+### 9d. Merge the post-release updates:
 ```bash
-git add docs/status.md docs/changelog.md CLAUDE.md
+git add docs/status.md CLAUDE.md
 git commit -m "chore: post-release updates for vX.Y.Z"
-git push origin main
+git push -u origin chore/post-release-vX.Y.Z
 ```
+Open the PR (`chore(release): post-release updates for vX.Y.Z`) and merge it as in §6, then `git switch main && git pull`.
 
 ---
 

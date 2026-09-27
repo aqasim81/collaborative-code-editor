@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### /release goes through a PR (#3)
+- `/release` cuts `chore/release-vX.Y.Z` from `main` and merges the changelog (with a fresh `[Unreleased]`) and the version bump through a PR, then tags the squash-merge commit and pushes only the tag. The post-release status updates, which record the deploy result, go through a second PR. `/release` no longer pushes to `main`; a hook test keeps tag pushes allowed
+
 ### Repository — public, protected main (#1, was #13)
 - `intent/`, `specs/`, `docs/templates/`, `docs/ENGINEERING_WORKFLOW.md` and `docs/REPO_STANDARDS.md` are local and gitignored; the workflow docs say so
 - History rewritten into a new public repo without those paths or co-author trailers (gitleaks clean); the old repo is the private `collaborative-code-editor-archive`, which keeps the earlier issues and PRs
