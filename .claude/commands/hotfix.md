@@ -181,10 +181,17 @@ ASK: "PR created: {URL}. CI is running. Should I merge immediately (squash merge
 
 **WAIT for response.**
 
-If approved for immediate merge:
+If approved for immediate merge, merge once the required checks pass (`main` is protected: PRs only, `Verify` and
+`Build` required and up to date):
 ```bash
-gh pr merge --squash --delete-branch
+gh pr checks {PR} --watch
+gh pr merge {PR} --squash --delete-branch
+git switch main && git pull
 ```
+If the merge is refused because the branch is behind `main` (strict protection: something merged while the checks
+ran), run `gh pr update-branch {PR}`, watch the checks again, then merge. Never bypass the protection.
+
+If waiting for review, merge the same way once approved. Do not continue to §9 until the PR is merged.
 
 ---
 
@@ -192,8 +199,8 @@ gh pr merge --squash --delete-branch
 
 Provide deployment instructions based on the project's stack:
 
-- **Vercel:** "Push to main triggers auto-deploy. Monitor the deployment."
-- **Railway:** "Push to main triggers auto-deploy. Monitor at Railway dashboard."
+- **Vercel:** "Merging the hotfix PR into main triggers auto-deploy. Monitor the deployment."
+- **Railway:** "Merging the hotfix PR into main triggers auto-deploy. Monitor at Railway dashboard."
 - **Manual:** Provide the exact deploy commands from CLAUDE.md.
 
 ASK: "Has the fix been deployed? Can you confirm the production issue is resolved?"
@@ -215,14 +222,27 @@ Run the complete validation suite now:
 If any tests fail, create a follow-up GitHub Issue immediately.
 
 ### 10b. Add Regression Test
+The follow-ups (10b and 10c) never commit on `main`. Cut one branch for both from a pulled `main`:
+```bash
+git switch main && git pull
+git switch -c chore/{issue-number}-hotfix-followup
+```
+
 If the hotfix did not include a test (expedited path):
 - Write a regression test covering the exact failure scenario
 - Commit: `test: add regression test for hotfix (#{issue})`
-- Push to main
 
 ### 10c. Update Documentation
 - Update `docs/changelog.md` with the hotfix entry
 - Update `docs/status.md` if applicable
+- Commit: `docs: record hotfix (#{issue})`
+
+Push the branch and open one PR for the follow-ups, then merge it as in §8:
+```bash
+git push -u origin chore/{issue-number}-hotfix-followup
+gh pr create --title "chore: hotfix follow-ups (#{issue})" --body "Refs #{issue}"
+```
+(`Refs`, not `Closes`: the hotfix PR already closed the issue.)
 
 ### 10d. Post-Mortem (for Critical Issues)
 If the issue caused downtime > 15 minutes or affected > 100 users, create a post-mortem:

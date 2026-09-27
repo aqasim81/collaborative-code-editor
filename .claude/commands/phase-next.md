@@ -28,7 +28,7 @@ If ALL phases are complete: "All phases complete — project is finished!"
 
 ### Resuming Mid-Phase
 
-If some workflow steps are already checked, skip to the first unchecked step (Plan → Implement → Review → Test → Fix → Update checklist).
+If some workflow steps are already checked, skip to the first unchecked step (Plan → Implement → Review → Test → Fix → Update checklist). If on `main`, switch to the phase branch as in step 6 first: the later steps commit too.
 
 ## 3. Read Phase Details
 
@@ -47,6 +47,13 @@ ASK: "Ready to begin Phase {N}? Review the plan above or say 'go' to start."
 ---
 
 ## 6. Implement
+
+`main` is protected, so never commit on it. If on `main`, switch to the phase branch, creating it only if it doesn't
+exist yet (locally or on origin; `{slug}` as in the phase file):
+```bash
+git pull
+git switch feat/phase-{N}-{slug} || git switch -c feat/phase-{N}-{slug}
+```
 
 Execute the plan from step 4. Commit after each logical chunk using conventional commits (follow CLAUDE.md conventions). If blocked, ASK — do not guess. Implement ALL tests from the phase plan.
 
@@ -71,8 +78,8 @@ Check every DoD item from `plans/phases/phase-N-{slug}.md` plus universal qualit
 
 ## 9.5. Create Pull Request
 
-If on a feature branch (not `main`), push and create a PR using the `/commit-push-pr` workflow. Include phase summary, test results, and coverage in the PR body.
+Push the phase branch and create a PR using the `/commit-push-pr` workflow; the PR is the only way the phase reaches `main`. Include phase summary, test results, and coverage in the PR body.
 
 ## 10. Report
 
-Summarize: phase name, what was built (1-3 bullets), tests/coverage results, commit count, PR URL (if created), and what's next.
+Summarize: phase name, what was built (1-3 bullets), tests/coverage results, commit count, PR URL, and what's next.
